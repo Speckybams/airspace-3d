@@ -118,10 +118,8 @@ export function TopBar({
     <header className="top-bar">
       <div className="brand-cluster">
         <div className="brand-lockup">
-          <p className="brand-wordmark">
-            Airspace <span className="brand-accent">3D</span>
-          </p>
-          <div className="brand-tag">NOT FOR NAVIGATION</div>
+          <img className="brand-wordmark" src="/brand/voluspace.png?v=4" alt="Airspace 3D" />
+          <div className="brand-tag">3D AIRSPACE VISUALISER</div>
         </div>
         <div className="utc-box mono">{utc}</div>
       </div>

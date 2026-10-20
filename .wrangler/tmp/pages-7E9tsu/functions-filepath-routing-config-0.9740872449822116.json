@@ -1,0 +1,13 @@
+{
+  "routes": [
+    {
+      "routePath": "/api/weather/metar",
+      "mountPath": "/api/weather",
+      "method": "GET",
+      "module": [
+        "api/weather/metar.ts:onRequestGet"
+      ]
+    }
+  ],
+  "baseURL": "/"
+}

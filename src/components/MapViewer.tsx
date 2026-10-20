@@ -143,7 +143,6 @@ export function MapViewer({
       const airLayer = new AirspaceLayer();
       layerRef.current = airLayer;
       scene.primitives.add(airLayer.collection);
-      scene.primitives.add(airLayer.hoverOutline);
       scene.primitives.add(airLayer.selectionOutline);
       const labelsHost = document.createElement("div");
       labelsHost.className = "airspace-labels";
@@ -309,7 +308,7 @@ export function MapViewer({
           Math.abs(at.x - lastPickX) > 2 ||
           Math.abs(at.y - lastPickY) > 2 ||
           altHeld !== lastPickAlt;
-        if (moved && now - lastPick > 48) {
+        if (moved && now - lastPick > 72) {
           lastPick = now;
           lastPickX = at.x;
           lastPickY = at.y;

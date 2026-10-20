@@ -34,6 +34,11 @@ export function createOverviewLayer(): ImageryLayer {
 const EOX =
   "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2025_3857/default/g/{z}/{y}/{x}.jpg";
 
+function osOutdoorUrl(key: string): string {
+  const path = `/maps/raster/v1/zxy/Outdoor_3857/{z}/{x}/{y}.png?key=${encodeURIComponent(key)}`;
+  return `/api/os${path}`;
+}
+
 export async function createBasemapLayer(
   id: BasemapId,
   osKey: string,
@@ -63,12 +68,12 @@ export async function createBasemapLayer(
     default: {
       if (osKey) {
         // Outdoor Open Data (z7–16) has coast, towns, and terrain. Mute it so volumes stay the colour.
-        const url = `https://api.os.uk/maps/raster/v1/zxy/Outdoor_3857/{z}/{x}/{y}.png?key=${osKey}`;
         return {
           layer: new ImageryLayer(
             new UrlTemplateImageryProvider({
-              url,
+              url: osOutdoorUrl(osKey),
               credit: new Credit("© Ordnance Survey"),
+              rectangle: Rectangle.fromDegrees(-8.8, 49.7, 2.2, 61),
               maximumLevel: 16,
             }),
             // Contrast above 1 lifts already-light paper back to white, so darken with brightness.

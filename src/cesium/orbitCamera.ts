@@ -205,7 +205,7 @@ export function attachOrbitCamera(scene: Scene): OrbitCamera {
     const dy = event.endPosition.y - last.y;
     Cartesian2.clone(event.endPosition, last);
     if (mode === "orbit") {
-      heading -= dx * 0.004;
+      heading += dx * 0.004;
       // Drag down tilts steeper; drag up raises toward the horizon.
       pitch = CesiumMath.clamp(pitch - dy * 0.004, MIN_PITCH, MAX_PITCH);
     } else {

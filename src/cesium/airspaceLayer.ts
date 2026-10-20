@@ -20,7 +20,7 @@ import {
   ShowGeometryInstanceAttribute,
   type Scene,
 } from "cesium";
-import { altitudeBandActive, pointInRing } from "@/lib/airspace-query";
+import { altitudeBandActive } from "@/lib/airspace-query";
 import { CATEGORY_STYLES } from "@/lib/colors";
 import { feetToMetres } from "@/lib/units";
 import type { AirspaceCategory, AirspaceFeature } from "@/lib/types";
@@ -53,8 +53,8 @@ const EARLY_LABEL = new Set([
 
 const MAX_PILLS = 12;
 /** Hover picks stay shallow; clicks drill deeper through stacked translucent fills. */
-export const PICK_DRILL_HOVER = 12;
-export const PICK_DRILL_CLICK = 36;
+export const PICK_DRILL_HOVER = 16;
+export const PICK_DRILL_CLICK = 32;
 
 export interface AirspacePill {
   id: string;
@@ -71,6 +71,10 @@ interface VolumeRecord {
   fillColor: Color;
   /** Smaller values sort first when resolving stacked picks at one pixel. */
   footprint: number;
+  west: number;
+  south: number;
+  east: number;
+  north: number;
   anchor: Cartesian3;
   samples: Cartesian3[];
   /** Top-ring edge endpoints, stored as pairs, for border tags. */
@@ -98,7 +102,6 @@ interface CategoryQueue {
 
 export class AirspaceLayer {
   readonly collection = new PrimitiveCollection();
-  readonly hoverOutline = new PrimitiveCollection();
   readonly selectionOutline = new PrimitiveCollection();
   private byId = new Map<string, VolumeRecord>();
   private batches: VolumeBatch[] = [];
@@ -112,6 +115,7 @@ export class AirspaceLayer {
   private selectedId: string | null = null;
   private labelsDirty = true;
   private settleAt = 0;
+  private lastLabelTrackMs = 0;
   private settlingAfterPan = false;
   private activePills: AirspacePill[] = [];
   private readonly pillTagWorld = new Map<string, Cartesian3>();
@@ -248,6 +252,10 @@ export class AirspaceLayer {
       feature: f,
       fillColor,
       footprint: ringFootprint(flat),
+      west,
+      south,
+      east,
+      north,
       anchor: Cartesian3.fromDegrees(c.lon, c.lat, top),
       samples: [
         Cartesian3.fromDegrees(west, south, top),
@@ -419,7 +427,6 @@ export class AirspaceLayer {
     if (!rec?.shown) return;
     this.hoveredId = id;
     this.applyHoverFill(rec);
-    this.addHoverEdges(rec);
   }
 
   /** Screen pills for volumes large enough to read. Null when the camera has not moved. */
@@ -445,6 +452,9 @@ export class AirspaceLayer {
       this.settlingAfterPan = true;
       this.settleAt = performance.now() + 180;
       if (this.activePills.length === 0) return [];
+      const now = performance.now();
+      if (now - this.lastLabelTrackMs < 55) return null;
+      this.lastLabelTrackMs = now;
       return this.layoutLabelsTrack(scene);
     }
 
@@ -611,12 +621,6 @@ export class AirspaceLayer {
     }
   }
 
-  private addHoverEdges(rec: VolumeRecord) {
-    const outline = lighten(Color.fromCssColorString(CATEGORY_STYLES[rec.feature.category].outline), 0.72, 0);
-    outline.alpha = 1;
-    this.addVolumeOutline(this.hoverOutline, rec, outline, 4);
-  }
-
   private addSelectionEdges(rec: VolumeRecord) {
     const edge = Color.fromCssColorString("#f8fafc");
     edge.alpha = 1;
@@ -681,7 +685,6 @@ export class AirspaceLayer {
       if (rec) this.restoreFill(rec);
     }
     this.hoveredId = null;
-    this.hoverOutline.removeAll();
   }
 
   private clearSelection() {
@@ -721,7 +724,7 @@ export class AirspaceLayer {
       merged.set(id, { footprint: this.byId.get(id)!.footprint, order: order++ });
     }
 
-    if (drillLimit >= PICK_DRILL_CLICK) {
+    if (drillLimit >= PICK_DRILL_CLICK && !preferTopmost) {
       for (const hit of this.geoHitsAtScreen(scene, windowPosition)) {
         if (merged.has(hit.id)) continue;
         merged.set(hit.id, { footprint: hit.footprint, order: order++ });
@@ -738,22 +741,27 @@ export class AirspaceLayer {
     return hits[0]?.id ?? null;
   }
 
-  /** Volumes visible at the ground point under the cursor (handles nested footprints drillPick can miss). */
+  /** Fallback when GPU drill finds nothing: volumes containing the pick ray hit point. */
   private geoHitsAtScreen(scene: Scene, windowPosition: Cartesian2): { id: string; footprint: number }[] {
     const ray = scene.camera.getPickRay(windowPosition, this.pickRay);
     if (!ray) return [];
-    const pos = scene.globe.pick(ray, scene);
+    const pos = scene.pickPosition(windowPosition) ?? scene.globe.pick(ray, scene);
     if (!pos) return [];
     Cartographic.fromCartesian(pos, Ellipsoid.WGS84, this.pickCarto);
     const lon = CesiumMath.toDegrees(this.pickCarto.longitude);
     const lat = CesiumMath.toDegrees(this.pickCarto.latitude);
+    const altM = this.pickCarto.height;
     const terrainH = scene.globe.getHeight(this.pickCarto) ?? 0;
     const hits: { id: string; footprint: number }[] = [];
     for (const rec of this.byId.values()) {
       if (!rec.shown) continue;
-      if (!pointInRing(lon, lat, rec.feature.ring)) continue;
-      if (!altitudeBandActive(rec.feature, this.band.u_low, this.band.u_high, terrainH)) continue;
-      hits.push({ id: rec.feature.id, footprint: rec.footprint });
+      if (lon < rec.west || lon > rec.east || lat < rec.south || lat > rec.north) continue;
+      if (!pointInRingLocal(lon, lat, rec.feature.ring)) continue;
+      const f = rec.feature;
+      const lower = f.lowerUsesTerrain ? terrainH + f.lower.ellipsoidM : f.lower.ellipsoidM;
+      const upper = f.upper.ellipsoidM;
+      if (altM < lower || altM > upper) continue;
+      hits.push({ id: f.id, footprint: rec.footprint });
     }
     return hits;
   }
@@ -828,6 +836,19 @@ function openRing(ring: [number, number][]): [number, number][] {
   const closed =
     ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1];
   return closed ? ring.slice(0, -1) : ring;
+}
+
+function pointInRingLocal(lon: number, lat: number, ring: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    const crosses = yi > lat !== yj > lat;
+    if (crosses && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
 }
 
 function ringBounds(ring: [number, number][]): { west: number; south: number; east: number; north: number } {
