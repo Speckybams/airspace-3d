@@ -1,0 +1,120 @@
+import { create } from "zustand";
+import type {
+  AirspaceFeature,
+  AirportFeature,
+  BasemapId,
+  ToolMode,
+} from "@/lib/types";
+
+export interface AppState {
+  basemap: BasemapId;
+  setBasemap: (b: BasemapId) => void;
+  categoryVisible: Record<string, boolean>;
+  toggleCategory: (c: string) => void;
+  hideAllCategories: () => void;
+  showAllCategories: () => void;
+  selectedAirspaceId: string | null;
+  setSelectedAirspaceId: (id: string | null) => void;
+  selectedAirspace: AirspaceFeature | null;
+  setSelectedAirspace: (a: AirspaceFeature | null) => void;
+  selectedAirport: AirportFeature | null;
+  setSelectedAirport: (a: AirportFeature | null) => void;
+  tool: ToolMode;
+  setTool: (t: ToolMode) => void;
+  altBandFt: [number, number];
+  setAltBandFt: (band: [number, number]) => void;
+  terrainExaggeration: number;
+  setTerrainExaggeration: (v: number) => void;
+  chartTopDown: boolean;
+  setChartTopDown: (v: boolean) => void;
+  queryAltFt: number;
+  setQueryAltFt: (v: number) => void;
+  disclaimerAccepted: boolean;
+  setDisclaimerAccepted: (v: boolean) => void;
+  isolateCategory: string | null;
+  setIsolateCategory: (c: string | null) => void;
+  satelliteNotice: string | null;
+  setSatelliteNotice: (m: string | null) => void;
+  /** 0–1 while the map is starting. Null once the bar should hide. */
+  loadProgress: number | null;
+  setLoadProgress: (n: number | null) => void;
+  cameraRequest: { lon: number; lat: number; range: number; id: number } | null;
+  requestCamera: (lon: number, lat: number, range: number) => void;
+  classLegendIcaoClass: string | null;
+  openClassLegend: (icaoClass: string) => void;
+  closeClassLegend: () => void;
+}
+
+const defaultCategories = [
+  "ctr",
+  "cta",
+  "tma",
+  "atz",
+  "airway",
+  "frz",
+  "rmz",
+  "tmz",
+  "danger",
+  "restricted",
+  "prohibited",
+  "matz",
+  "glider",
+  "other",
+];
+
+const categoryVisible = Object.fromEntries(defaultCategories.map((c) => [c, true]));
+
+export const useAppStore = create<AppState>((set) => ({
+  basemap: "chart",
+  setBasemap: (basemap) => set({ basemap }),
+  categoryVisible,
+  toggleCategory: (c) =>
+    set((s) => ({
+      categoryVisible: { ...s.categoryVisible, [c]: !s.categoryVisible[c] },
+    })),
+  hideAllCategories: () =>
+    set((s) => ({
+      categoryVisible: Object.fromEntries(Object.keys(s.categoryVisible).map((c) => [c, false])),
+    })),
+  showAllCategories: () =>
+    set((s) => ({
+      categoryVisible: Object.fromEntries(Object.keys(s.categoryVisible).map((c) => [c, true])),
+    })),
+  selectedAirspaceId: null,
+  setSelectedAirspaceId: (selectedAirspaceId) => set({ selectedAirspaceId }),
+  selectedAirspace: null,
+  setSelectedAirspace: (selectedAirspace) => set({ selectedAirspace }),
+  selectedAirport: null,
+  setSelectedAirport: (selectedAirport) => set({ selectedAirport }),
+  tool: "navigate",
+  setTool: (tool) => set({ tool }),
+  altBandFt: [0, 66000],
+  setAltBandFt: (altBandFt) => set({ altBandFt }),
+  terrainExaggeration: 1,
+  setTerrainExaggeration: (terrainExaggeration) => set({ terrainExaggeration }),
+  chartTopDown: false,
+  setChartTopDown: (chartTopDown) => set({ chartTopDown }),
+  queryAltFt: 3000,
+  setQueryAltFt: (queryAltFt) => set({ queryAltFt }),
+  disclaimerAccepted:
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem("voluspace-disclaimer") === "1",
+  setDisclaimerAccepted: (v) => {
+    if (v) localStorage.setItem("voluspace-disclaimer", "1");
+    set({ disclaimerAccepted: v });
+  },
+  isolateCategory: null,
+  setIsolateCategory: (isolateCategory) => set({ isolateCategory }),
+  satelliteNotice: null,
+  setSatelliteNotice: (satelliteNotice) => set({ satelliteNotice }),
+  loadProgress: null,
+  setLoadProgress: (loadProgress) => set({ loadProgress }),
+  cameraRequest: null,
+  requestCamera: (lon, lat, range) =>
+    set((s) => ({
+      cameraRequest: { lon, lat, range, id: (s.cameraRequest?.id ?? 0) + 1 },
+    })),
+  classLegendIcaoClass: null,
+  openClassLegend: (icaoClass) => set({ classLegendIcaoClass: icaoClass }),
+  closeClassLegend: () => set({ classLegendIcaoClass: null }),
+}));

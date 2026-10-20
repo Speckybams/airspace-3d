@@ -1,0 +1,92 @@
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+
+:root {
+  --bg: #0a0e17;
+  --panel: #111827;
+  --border: #1f2937;
+  --text: #e5e7eb;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-display: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --rail-width: 280px;
+  --detail-width: 360px;
+  --radius: 2px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.left-rail,
+.detail-panel,
+.search-results,
+.class-legend-modal {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+
+.left-rail::-webkit-scrollbar,
+.detail-panel::-webkit-scrollbar,
+.search-results::-webkit-scrollbar,
+.class-legend-modal::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.left-rail::-webkit-scrollbar-track,
+.detail-panel::-webkit-scrollbar-track,
+.search-results::-webkit-scrollbar-track,
+.class-legend-modal::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.left-rail::-webkit-scrollbar-thumb,
+.detail-panel::-webkit-scrollbar-thumb,
+.search-results::-webkit-scrollbar-thumb,
+.class-legend-modal::-webkit-scrollbar-thumb {
+  background: #334155;
+  border: 2px solid var(--panel);
+  border-radius: var(--radius);
+}
+
+.left-rail::-webkit-scrollbar-thumb:hover,
+.detail-panel::-webkit-scrollbar-thumb:hover,
+.search-results::-webkit-scrollbar-thumb:hover,
+.class-legend-modal::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 12px;
+}
+
+.tiny {
+  font-size: 11px;
+}

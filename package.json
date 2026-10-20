@@ -1,0 +1,44 @@
+{
+  "name": "voluspace",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "predev": "node scripts/copy-cesium-assets.cjs && npm run build:data",
+    "dev": "vite",
+    "prebuild": "node scripts/copy-cesium-assets.cjs && npm run build:data",
+    "build": "vite build",
+    "build:data": "tsx scripts/build-data.ts",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.2.5",
+    "@fontsource/ibm-plex-sans": "^5.3.0",
+    "@turf/bearing": "^7.2.0",
+    "@turf/boolean-point-in-polygon": "^7.2.0",
+    "@turf/helpers": "^7.2.0",
+    "@turf/length": "^7.2.0",
+    "@turf/line-intersect": "^7.2.0",
+    "cesium": "^1.140.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11",
+    "vite-plugin-static-copy": "^2.2.0",
+    "vitest": "^3.0.5"
+  }
+}

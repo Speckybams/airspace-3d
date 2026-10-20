@@ -1,0 +1,20 @@
+{
+  "features": [
+    {
+      "id": "override-heathrow-frz",
+      "name": "London Heathrow (EGLL) FRZ",
+      "category": "frz",
+      "icaoClass": "G",
+      "lower": { "value": 0, "unit": "FT", "datum": "GND", "display": "SFC" },
+      "upper": { "value": 400, "unit": "FT", "datum": "AGL", "display": "400 ft AGL" },
+      "remarks": "Drone Flight Restriction Zone — illustrative boundary for education. Verify with official CAA UAS maps before flying.",
+      "ring": [
+        [-0.55, 51.42],
+        [-0.35, 51.42],
+        [-0.35, 51.52],
+        [-0.55, 51.52],
+        [-0.55, 51.42]
+      ]
+    }
+  ]
+}
