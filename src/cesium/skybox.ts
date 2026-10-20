@@ -95,7 +95,7 @@ function paintFace(face: Face, size: number): HTMLCanvasElement {
 const NEAREST = 9728;
 const CLAMP_TO_EDGE = 33071;
 
-export async function applyVoluSpaceSky(scene: Scene): Promise<void> {
+export async function applyAirspace3dSky(scene: Scene): Promise<void> {
   const size = 2048;
   const sources = Object.fromEntries(FACES.map((face) => [face, paintFace(face, size)])) as Record<
     Face,

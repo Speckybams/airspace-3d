@@ -1,4 +1,4 @@
-# Architecture — VoluSpace
+# Architecture — Airspace 3D
 
 ## Runtime
 
@@ -38,4 +38,4 @@ Live ADS-B, NOTAM activation, worldwide sections, accounts, offline PWA, full cr
 
 ## Product name
 
-Working title **VoluSpace** (STARLING-Airspace repo). Rename repo/domain when marketing name is final.
+Product name **Airspace 3D** (repo folder may remain STARLING-Airspace until renamed on GitHub).

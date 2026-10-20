@@ -98,9 +98,10 @@ export const useAppStore = create<AppState>((set) => ({
   setQueryAltFt: (queryAltFt) => set({ queryAltFt }),
   disclaimerAccepted:
     typeof localStorage !== "undefined" &&
-    localStorage.getItem("voluspace-disclaimer") === "1",
+    (localStorage.getItem("airspace3d-disclaimer") === "1" ||
+      localStorage.getItem("voluspace-disclaimer") === "1"),
   setDisclaimerAccepted: (v) => {
-    if (v) localStorage.setItem("voluspace-disclaimer", "1");
+    if (v) localStorage.setItem("airspace3d-disclaimer", "1");
     set({ disclaimerAccepted: v });
   },
   isolateCategory: null,

@@ -10,7 +10,8 @@ const TOOLS: { id: ToolMode; label: string }[] = [
   { id: "route", label: "ROUTE" },
 ];
 
-const RECENT_KEY = "voluspace-recents";
+const RECENT_KEY = "airspace3d-recents";
+const LEGACY_RECENT_KEY = "voluspace-recents";
 
 const SUGGESTED: { kind: SearchEntry["kind"]; match: (entry: SearchEntry) => boolean }[] = [
   { kind: "airport", match: (entry) => entry.label.startsWith("EGLL") },
@@ -25,7 +26,9 @@ const SUGGESTED: { kind: SearchEntry["kind"]; match: (entry: SearchEntry) => boo
 
 function loadRecents(): SearchEntry[] {
   try {
-    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]") as unknown;
+    const stored =
+      localStorage.getItem(RECENT_KEY) ?? localStorage.getItem(LEGACY_RECENT_KEY) ?? "[]";
+    const raw = JSON.parse(stored) as unknown;
     if (!Array.isArray(raw)) return [];
     return raw.filter(isSearchEntry).slice(0, 6);
   } catch {
@@ -115,8 +118,10 @@ export function TopBar({
     <header className="top-bar">
       <div className="brand-cluster">
         <div className="brand-lockup">
-          <img className="brand-wordmark" src="/brand/voluspace.png?v=3" alt="VoluSpace" />
-          <div className="brand-tag">3D AIRSPACE VISUALISER</div>
+          <p className="brand-wordmark">
+            Airspace <span className="brand-accent">3D</span>
+          </p>
+          <div className="brand-tag">NOT FOR NAVIGATION</div>
         </div>
         <div className="utc-box mono">{utc}</div>
       </div>

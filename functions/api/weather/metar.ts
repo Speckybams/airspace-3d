@@ -7,7 +7,7 @@ export async function onRequestGet(context: { request: Request }): Promise<Respo
   const upstream = `https://aviationweather.gov/api/data/metar?ids=${encodeURIComponent(ids)}&format=json`;
   const resp = await fetch(upstream, {
     headers: {
-      "User-Agent": "VoluSpace/0.1 (UK airspace viewer; educational use)",
+      "User-Agent": "Airspace3D/0.1 (3D airspace viewer; educational use)",
       Accept: "application/json",
     },
   });

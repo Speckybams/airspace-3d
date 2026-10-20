@@ -1,4 +1,4 @@
-# VoluSpace licensing register
+# Airspace 3D licensing register
 
 Track non-commercial and replace-before-monetize dependencies.
 

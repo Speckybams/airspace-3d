@@ -19,7 +19,7 @@ import { BASE_IMAGERY_LAYERS, createBasemapLayer, createOverviewLayer, setIonTok
 import { hideIonUpsell } from "@/cesium/credits";
 import { attachOrbitCamera, type OrbitCamera } from "@/cesium/orbitCamera";
 import { OVERVIEW_SEA } from "@/cesium/overviewMap";
-import { applyVoluSpaceSky, setSharpGlobe } from "@/cesium/skybox";
+import { applyAirspace3dSky, setSharpGlobe } from "@/cesium/skybox";
 import { airspacesAtPoint } from "@/lib/airspace-query";
 import { feetToMetres } from "@/lib/units";
 import { viewRangeMetres } from "@/lib/viewRange";
@@ -105,7 +105,7 @@ export function MapViewer({
       if (cancelled) return;
 
       try {
-        await applyVoluSpaceSky(scene);
+        await applyAirspace3dSky(scene);
       } catch (skyError) {
         console.warn("Sky setup skipped", skyError);
       }

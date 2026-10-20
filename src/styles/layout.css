@@ -171,9 +171,18 @@
 }
 
 .brand-wordmark {
-  display: block;
-  height: 15px;
-  width: auto;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.brand-wordmark .brand-accent {
+  color: var(--accent);
 }
 
 .brand-tag {

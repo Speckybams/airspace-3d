@@ -1,6 +1,6 @@
-# VoluSpace
+# Airspace 3D
 
-3D interactive UK airspace map built with **React**, **Vite**, and **CesiumJS**. Understand controlled airspace in context — **not for navigation**.
+3D interactive airspace map built with **React**, **Vite**, and **CesiumJS**. Understand controlled airspace in context — **not for navigation**. UK coverage ships first; additional regions are planned.
 
 ## Setup
 

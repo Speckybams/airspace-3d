@@ -8,7 +8,7 @@ export interface SliceBand {
 }
 
 const HEIGHT_FN = `
-float voluspaceEllipsoidHeight(vec3 p) {
+float airspace3dEllipsoidHeight(vec3 p) {
   const float a = 6378137.0;
   const float b = 6356752.314245;
   const float e2 = 6.69437999014e-3;
@@ -41,7 +41,7 @@ ${HEIGHT_FN}
 void main()
 {
     vec3 positionWC = (czm_inverseView * vec4(v_positionEC, 1.0)).xyz;
-    float h = voluspaceEllipsoidHeight(positionWC);
+    float h = airspace3dEllipsoidHeight(positionWC);
     if (h < u_low - 2.0 || h > u_high + 2.0) {
         discard;
     }
@@ -90,7 +90,7 @@ ${HEIGHT_FN}
 void main()
 {
     vec3 positionWC = (czm_inverseView * vec4(v_positionEC, 1.0)).xyz;
-    float h = voluspaceEllipsoidHeight(positionWC);
+    float h = airspace3dEllipsoidHeight(positionWC);
     if (h < u_low - 2.0 || h > u_high + 2.0) {
         discard;
     }
