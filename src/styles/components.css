@@ -219,6 +219,41 @@
   font-size: 11px;
 }
 
+.weather-block {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.weather-block h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.weather-report {
+  margin-top: 8px;
+}
+
+.weather-report + .weather-report {
+  margin-top: 10px;
+}
+
+.weather-kind {
+  margin: 0 0 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.weather-raw {
+  margin: 0;
+  line-height: 1.45;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
 .icao-class-chip {
   display: inline-block;
   font-family: var(--font-mono);

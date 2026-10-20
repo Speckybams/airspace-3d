@@ -19,9 +19,10 @@ Open http://localhost:5173
 
 - **Build command:** `npm run build`
 - **Output directory:** `dist`
-- **Environment variables:** `VITE_CESIUM_ION_ACCESS_TOKEN`, `VITE_OS_API_KEY`
+- **Push live:** `.\scripts\push-live.ps1 "Your commit message"` (pushes `main` → GitHub → Pages rebuild)
+- **Secrets:** never commit `.env`. Set `VITE_CESIUM_ION_ACCESS_TOKEN` and `VITE_OS_API_KEY` in Cloudflare Pages → Environment variables (Production + Preview), then retry the latest deployment if you change them. Restrict ion/OS keys to `https://voluspace.com`.
 
-Pages Functions serve `/api/weather/metar` (METAR proxy). See [docs/HOSTING.md](docs/HOSTING.md).
+Full checklist: [docs/DEPLOY.md](docs/DEPLOY.md). Runtime: [docs/HOSTING.md](docs/HOSTING.md).
 
 ## Docs
 

@@ -8,11 +8,13 @@ import { WeatherBlock } from "./WeatherBlock";
 interface Props {
   airspaces: AirspaceFeature[];
   airports: AirportFeature[];
+  mapLat: number;
+  mapLon: number;
 }
 
 const SLIDE_MS = 320;
 
-export function DetailPanel({ airspaces, airports }: Props) {
+export function DetailPanel({ airspaces, airports, mapLat, mapLon }: Props) {
   const selected = useAppStore((s) => s.selectedAirspace);
   const setSelectedAirspace = useAppStore((s) => s.setSelectedAirspace);
   const setSelectedAirspaceId = useAppStore((s) => s.setSelectedAirspaceId);
@@ -94,7 +96,7 @@ export function DetailPanel({ airspaces, airports }: Props) {
       )}
       {rendered.remarks && <p className="small muted">{rendered.remarks}</p>}
       <p className="small">{blurb} (General guidance only.)</p>
-      <WeatherBlock airports={airports} nearLat={0} nearLon={0} />
+      <WeatherBlock airports={airports} nearLat={mapLat} nearLon={mapLon} />
       <p className="muted tiny">Source: {rendered.source} · OpenAIP CC BY-NC</p>
     </aside>
   );

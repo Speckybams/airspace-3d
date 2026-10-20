@@ -12,6 +12,16 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/os/, ""),
       },
+      "/api/weather/metar": {
+        target: "https://aviationweather.gov",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/weather\/metar/, "/api/data/metar"),
+      },
+      "/api/weather/taf": {
+        target: "https://aviationweather.gov",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/weather\/taf/, "/api/data/taf"),
+      },
     },
   },
   resolve: {

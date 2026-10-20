@@ -141,7 +141,12 @@ export function App() {
           <AltitudeRuler />
           {tool === "crossSection" && <CrossSectionPanel airspaces={airspaces} />}
           {satelliteNotice && <div className="map-notice">{satelliteNotice}</div>}
-          <DetailPanel airports={airports} airspaces={airspaces} />
+          <DetailPanel
+            airports={airports}
+            airspaces={airspaces}
+            mapLat={status.lat}
+            mapLon={status.lon}
+          />
         </div>
       </div>
       <StatusBar meta={meta} {...status} />

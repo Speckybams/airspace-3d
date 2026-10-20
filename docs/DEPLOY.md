@@ -26,18 +26,18 @@ If the domain is registered **with Cloudflare**, skip nameserver changes.
 | Build command | `npm run build` |
 | Build output directory | `dist` |
 
-4. **Environment variables** (add for **Production** and **Preview** — copy from local `.env`):
+4. **Environment variables** (add for **Production** and **Preview** — copy values from local `.env`, **never commit `.env`**):
 
 | Name | Notes |
 |------|--------|
 | `VITE_CESIUM_ION_ACCESS_TOKEN` | From [Cesium ion](https://ion.cesium.com/tokens) |
-| `VITE_OS_API_KEY` | From [OS Data Hub](https://osdatahub.os.uk/) |
+| `VITE_OS_API_KEY` | From [OS Data Hub](https://osdatahub.os.uk/) — used at build time; chart tiles are fetched via `/api/os/*` on the live site |
 | `NODE_VERSION` | `22` |
 
 5. **Save and Deploy**. Open the `*.pages.dev` URL.
-6. Smoke test: `/api/weather/metar?ids=EGLL` should return JSON.
+6. Smoke test: `/api/weather/metar?ids=EGLL` should return JSON; chart basemap should load without browser CORS errors to `api.os.uk`.
 
-If you change env vars later, use **Deployments → Retry deployment** (Vite bakes `VITE_*` at build time).
+If you change env vars later, use **Deployments → Retry deployment** on the latest build (Vite bakes `VITE_*` into the client at build time).
 
 ## 3. Custom domain
 
