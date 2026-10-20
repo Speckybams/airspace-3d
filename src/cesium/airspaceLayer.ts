@@ -115,7 +115,6 @@ export class AirspaceLayer {
   private selectedId: string | null = null;
   private labelsDirty = true;
   private settleAt = 0;
-  private lastLabelTrackMs = 0;
   private settlingAfterPan = false;
   private activePills: AirspacePill[] = [];
   private readonly pillTagWorld = new Map<string, Cartesian3>();
@@ -452,9 +451,6 @@ export class AirspaceLayer {
       this.settlingAfterPan = true;
       this.settleAt = performance.now() + 180;
       if (this.activePills.length === 0) return [];
-      const now = performance.now();
-      if (now - this.lastLabelTrackMs < 55) return null;
-      this.lastLabelTrackMs = now;
       return this.layoutLabelsTrack(scene);
     }
 

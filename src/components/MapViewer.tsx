@@ -480,8 +480,7 @@ function paintPills(
       continue;
     }
     el.style.display = hideFeatureId && pill.id === hideFeatureId ? "none" : "flex";
-    el.style.left = `${pill.x}px`;
-    el.style.top = `${pill.y}px`;
+    el.style.transform = `translate3d(${pill.x}px, ${pill.y}px, 0) translate(-50%, -50%)`;
     el.style.setProperty("--label-accent", pill.accent);
     el.dataset.category = pill.category;
     el.dataset.featureId = pill.id;

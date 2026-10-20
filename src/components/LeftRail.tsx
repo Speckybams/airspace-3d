@@ -33,6 +33,7 @@ export function LeftRail() {
   const setTerrainExaggeration = useAppStore((s) => s.setTerrainExaggeration);
   const chartTopDown = useAppStore((s) => s.chartTopDown);
   const setChartTopDown = useAppStore((s) => s.setChartTopDown);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [hint, setHint] = useState<AirspaceCategory | null>(null);
   const [hintVisible, setHintVisible] = useState(false);
   const [hintPoint, setHintPoint] = useState<{ x: number; y: number } | null>(null);
@@ -107,7 +108,15 @@ export function LeftRail() {
       : null;
 
   return (
-    <aside className="left-rail" ref={railRef}>
+    <aside className={filtersOpen ? "left-rail filters-open" : "left-rail"} ref={railRef}>
+      <button
+        type="button"
+        className="rail-toggle"
+        aria-expanded={filtersOpen}
+        onClick={() => setFiltersOpen((open) => !open)}
+      >
+        {filtersOpen ? "Hide filters" : "Filters"}
+      </button>
       <section>
         <h3>Map</h3>
         <div className="btn-group">

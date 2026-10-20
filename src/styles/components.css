@@ -450,3 +450,54 @@
   font-size: 11px;
   margin: 4px 0 2px;
 }
+
+/* iPad landscape keeps the desktop shell, so the desktop type scale reads small. */
+@media (min-width: 1024px) and (max-width: 1400px) and (orientation: landscape) and (pointer: coarse) {
+  body {
+    font-size: 15px;
+  }
+
+  .btn,
+  .field,
+  .category-list,
+  .filter-group h4,
+  .check,
+  .status-bar,
+  .stack-row,
+  .utc-box,
+  .text-btn,
+  .tools-kicker,
+  .search-heading {
+    font-size: 13px;
+  }
+
+  .left-rail h3,
+  .search-input,
+  .search-results button {
+    font-size: 15px;
+  }
+
+  .detail-panel h2 {
+    font-size: 18px;
+  }
+
+  .brand-tag {
+    font-size: 9px;
+  }
+
+  .airspace-label .nm,
+  .airspace-tip .nm,
+  .alt-arm-row span {
+    font-size: 14px;
+  }
+
+  .airspace-label .ty,
+  .airspace-tip .ty,
+  .airspace-tip .alt {
+    font-size: 12px;
+  }
+
+  .category-list label {
+    line-height: 1.35;
+  }
+}
