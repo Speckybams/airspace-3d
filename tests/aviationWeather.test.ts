@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickWeatherStation } from "@/lib/aviationWeather";
+import { airspaceCategoryShowsWeather, pickWeatherStation } from "@/lib/aviationWeather";
 import type { AirportFeature } from "@/lib/types";
 
 const airports: AirportFeature[] = [
@@ -22,6 +22,16 @@ const airports: AirportFeature[] = [
     frequencies: [],
   },
 ];
+
+describe("airspaceCategoryShowsWeather", () => {
+  it("shows for aerodrome-adjacent categories only", () => {
+    expect(airspaceCategoryShowsWeather("atz")).toBe(true);
+    expect(airspaceCategoryShowsWeather("ctr")).toBe(true);
+    expect(airspaceCategoryShowsWeather("tma")).toBe(false);
+    expect(airspaceCategoryShowsWeather("airway")).toBe(false);
+    expect(airspaceCategoryShowsWeather("danger")).toBe(false);
+  });
+});
 
 describe("pickWeatherStation", () => {
   it("picks nearest ICAO airport to map centre", () => {

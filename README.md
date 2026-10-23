@@ -1,6 +1,6 @@
 # Airspace 3D
 
-3D interactive airspace map built with **React**, **Vite**, and **CesiumJS**. Understand controlled airspace in context — **not for navigation**. UK coverage ships first; additional regions are planned.
+3D interactive airspace map built with **React**, **Vite**, and **CesiumJS**. Understand controlled airspace in context — **not for navigation**. Europe & North America airspace pack (OpenAIP); cells load near the camera.
 
 ## Setup
 
@@ -32,7 +32,7 @@ Full checklist: [docs/DEPLOY.md](docs/DEPLOY.md). Runtime: [docs/HOSTING.md](doc
 
 ## Data
 
-UK airspace is built from daily [OpenAIP](https://www.openaip.net/) exports plus a Heathrow FRZ override. Refresh:
+Airspace is built from [OpenAIP](https://www.openaip.net/) exports (22 countries in the first pack) plus a Heathrow FRZ override. Refresh:
 
 ```powershell
 npm run build:data

@@ -1,6 +1,7 @@
 node_modules/
 dist/
 public/cesium/
+public/data/world/cells/
 .env
 .env.*
 !.env.example

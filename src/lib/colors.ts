@@ -20,10 +20,30 @@ export const CATEGORY_STYLES: Record<AirspaceCategory, CategoryStyle> = {
   prohibited: { fill: "rgba(127, 29, 29, 0.35)", outline: "rgba(185, 28, 28, 0.95)", dashed: false },
   matz: { fill: "rgba(101, 163, 13, 0.2)", outline: "rgba(163, 230, 53, 0.9)", dashed: false },
   glider: { fill: "rgba(250, 204, 21, 0.18)", outline: "rgba(253, 224, 71, 0.95)", dashed: true },
+  moa: { fill: "rgba(234, 88, 12, 0.16)", outline: "rgba(251, 146, 60, 0.9)", dashed: true },
+  alert: { fill: "rgba(244, 114, 182, 0.16)", outline: "rgba(251, 207, 232, 0.95)", dashed: true },
+  warning: { fill: "rgba(249, 115, 22, 0.16)", outline: "rgba(253, 186, 116, 0.95)", dashed: true },
   other: { fill: "rgba(148, 163, 184, 0.15)", outline: "rgba(203, 213, 225, 0.8)", dashed: false },
 };
 
 /** Short filter-rail hints; general guidance only. */
+/** North American class rows. Polygon color matches the filter swatch. */
+export const NA_CLASS_STYLES: Record<string, CategoryStyle> = {
+  B: { fill: "rgba(37, 99, 235, 0.2)", outline: "rgba(37, 99, 235, 0.9)", dashed: false },
+  C: { fill: "rgba(147, 51, 234, 0.2)", outline: "rgba(147, 51, 234, 0.9)", dashed: false },
+  D: { fill: "rgba(96, 165, 250, 0.22)", outline: "rgba(96, 165, 250, 0.95)", dashed: false },
+  E: { fill: "rgba(125, 211, 252, 0.22)", outline: "rgba(125, 211, 252, 0.95)", dashed: false },
+  F: { fill: "rgba(132, 204, 22, 0.2)", outline: "rgba(132, 204, 22, 0.95)", dashed: false },
+};
+
+export const NA_CLASS_HINTS: Record<string, string> = {
+  B: "Class B. Busy terminal airspace. Clearance required before entry.",
+  C: "Class C. Controlled airspace around a radar airport. Two-way radio required.",
+  D: "Class D. Control zone around a towered airport.",
+  E: "Class E. Controlled airspace. VFR rules apply, with IFR separation.",
+  F: "Class F. Advisory airspace. In Canada this includes CYA areas.",
+};
+
 export const CATEGORY_HINTS: Record<AirspaceCategory, string> = {
   airway: "Published IFR route structure between fixes.",
   tma: "Terminal area around a major airport, IFR and VFR with ATC.",
@@ -38,6 +58,9 @@ export const CATEGORY_HINTS: Record<AirspaceCategory, string> = {
   tmz: "Transponder mandatory with assigned code or Mode S.",
   matz: "Military aerodrome traffic zone.",
   glider: "Gliding or soaring activity; expect unpowered traffic.",
+  moa: "Military operations area. Transit when it is not active, or with clearance.",
+  alert: "Alert area. High pilot training or unusual activity; no clearance required.",
+  warning: "Warning area. Hazardous activity, often over water.",
   other: "Other published airspace not in a standard category.",
 };
 

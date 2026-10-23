@@ -13,11 +13,7 @@ import {
   ScreenSpaceEventType,
   type Scene,
 } from "cesium";
-
-const MIN_PITCH = CesiumMath.toRadians(-89);
-const MAX_PITCH = CesiumMath.toRadians(-8);
-const MIN_RANGE = 80;
-const MAX_RANGE = 4.2e7;
+import { MAX_PITCH, MAX_RANGE, MIN_PITCH, MIN_RANGE, poseAfterPinch } from "@/cesium/touchOrbit";
 // Cesium's wheel delta is positive when the wheel rolls forward. That zooms in.
 const WHEEL_GAIN = 0.00115;
 // Seconds-scale so one notch eases instead of jumping.
@@ -217,6 +213,45 @@ export function attachOrbitCamera(scene: Scene): OrbitCamera {
   handler.setInputAction((delta: number) => {
     queueZoom(typeof delta === "number" ? delta : 0);
   }, ScreenSpaceEventType.WHEEL);
+
+  handler.setInputAction((event: { position1: Cartesian2; position2: Cartesian2 }) => {
+    cancelMotion();
+    mode = "none";
+    holdingGround = false;
+    wheelFocus.x = (event.position1.x + event.position2.x) * 0.5;
+    wheelFocus.y = (event.position1.y + event.position2.y) * 0.5;
+    hasWheelFocus = true;
+  }, ScreenSpaceEventType.PINCH_START);
+
+  handler.setInputAction(() => {
+    mode = "none";
+    holdingGround = false;
+  }, ScreenSpaceEventType.PINCH_END);
+
+  const onPinch: ScreenSpaceEventHandler.TwoPointMotionEventCallback = (event) => {
+      const pinch = event as unknown as {
+        distance: { startPosition: Cartesian2; endPosition: Cartesian2 };
+        angleAndHeight: { startPosition: Cartesian2; endPosition: Cartesian2 };
+      };
+      cancelMotion();
+      const next = poseAfterPinch(
+        { heading, pitch, range },
+        {
+          prevDist: pinch.distance.startPosition.y,
+          nextDist: pinch.distance.endPosition.y,
+          dAngle: pinch.angleAndHeight.endPosition.x - pinch.angleAndHeight.startPosition.x,
+          dHeight: pinch.angleAndHeight.endPosition.y - pinch.angleAndHeight.startPosition.y,
+        },
+      );
+      heading = next.heading;
+      pitch = next.pitch;
+      const prevRange = range;
+      range = next.range;
+      shiftAnchorForZoom(prevRange, range);
+      frame();
+      scene.requestRender();
+  };
+  handler.setInputAction(onPinch, ScreenSpaceEventType.PINCH_MOVE);
 
   return {
     flyTo(lon: number, lat: number, nextRange: number) {

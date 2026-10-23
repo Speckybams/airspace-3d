@@ -7,7 +7,7 @@ flowchart LR
   subgraph client [Browser]
     React[React_UI]
     Cesium[CesiumJS]
-    Data[public/data/uk]
+    Data[public/data/world]
     React --> Cesium
     Data --> React
   end
@@ -24,9 +24,9 @@ flowchart LR
 
 ## Data pipeline
 
-[`scripts/build-data.ts`](../scripts/build-data.ts) downloads OpenAIP `gb_*` exports, normalises limits, classifies categories, merges [`data/overrides/`](../data/overrides/), writes [`public/data/uk/`](../public/data/uk/).
+[`scripts/build-data.ts`](../scripts/build-data.ts) downloads OpenAIP exports for the Europe & North America country list, normalises limits, classifies categories, merges [`data/overrides/`](../data/overrides/), writes [`public/data/world/`](../public/data/world/) (10° airspace cells plus search index and airports). Cell JSON is generated at build time and gitignored.
 
-Heights: FL → standard pressure; AMSL → ellipsoid + UK geoid estimate; AGL/GND → terrain sample at load in the client.
+Heights: FL → standard pressure; AMSL → ellipsoid + coarse global geoid estimate; AGL/GND → terrain sample at load in the client. The viewer loads only airspace cells near the camera.
 
 ## Rendering
 

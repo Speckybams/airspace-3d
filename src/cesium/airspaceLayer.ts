@@ -9,6 +9,7 @@ import {
   PerInstanceColorAppearance,
   PolygonGeometry,
   PolygonHierarchy,
+  PolylineColorAppearance,
   PolylineGeometry,
   Primitive,
   PrimitiveCollection,
@@ -21,8 +22,10 @@ import {
   type Scene,
 } from "cesium";
 import { altitudeBandActive } from "@/lib/airspace-query";
-import { CATEGORY_STYLES } from "@/lib/colors";
-import { feetToMetres } from "@/lib/units";
+import { airspaceListed, airspaceTypeLabel, classFilterApplies, filterRegionFor } from "@/lib/filterRegion";
+import { CATEGORY_STYLES, NA_CLASS_STYLES } from "@/lib/colors";
+import { overviewLod } from "@/cesium/overviewLod";
+import { feetToMetres, flightLevelToMetres } from "@/lib/units";
 import type { AirspaceCategory, AirspaceFeature } from "@/lib/types";
 import { useAppStore } from "@/store/appStore";
 import {
@@ -52,6 +55,10 @@ const EARLY_LABEL = new Set([
 ]);
 
 const MAX_PILLS = 12;
+/** Solid fill stops here. The outline and the detail panel keep the published ceiling. */
+const FILL_CAP_M = flightLevelToMetres(195);
+/** Far plates follow the earth, but not at the 1° mesh the columns use. */
+const PLATE_GRANULARITY = CesiumMath.toRadians(3.5);
 /** Hover picks stay shallow; clicks drill deeper through stacked translucent fills. */
 export const PICK_DRILL_HOVER = 16;
 export const PICK_DRILL_CLICK = 32;
@@ -67,6 +74,7 @@ export interface AirspacePill {
 }
 
 interface VolumeRecord {
+  cellId: string;
   feature: AirspaceFeature;
   fillColor: Color;
   /** Smaller values sort first when resolving stacked picks at one pixel. */
@@ -80,23 +88,32 @@ interface VolumeRecord {
   /** Top-ring edge endpoints, stored as pairs, for border tags. */
   edgeEnds: Cartesian3[];
   edgeIds: string[];
+  plateEdgeIds: string[];
   shown: boolean;
   showPending: boolean;
   fillPrimitive: Primitive | null;
   edgePrimitive: Primitive | null;
+  platePrimitive: Primitive | null;
+  plateEdgePrimitive: Primitive | null;
   showAttrs: { show: number[] }[] | null;
+  plateAttrs: { show: number[] }[] | null;
 }
 
 interface VolumeBatch {
+  cellId: string;
   category: string;
-  fill: Primitive;
-  edges: Primitive;
+  fill: Primitive | null;
+  edges: Primitive | null;
+  plate: Primitive | null;
+  plateEdges: Primitive | null;
   records: VolumeRecord[];
 }
 
 interface CategoryQueue {
   fills: GeometryInstance[];
   edges: GeometryInstance[];
+  plates: GeometryInstance[];
+  plateEdges: GeometryInstance[];
   records: VolumeRecord[];
 }
 
@@ -106,10 +123,19 @@ export class AirspaceLayer {
   private byId = new Map<string, VolumeRecord>();
   private batches: VolumeBatch[] = [];
   private queues = new Map<string, CategoryQueue>();
+  private loadedCells = new Set<string>();
   private terrainHeights = new Map<string, number>();
   private readonly band: SliceBand = { u_low: 0, u_high: feetToMetres(66000) };
   private readonly fillAppearance = createFillAppearance(this.band);
   private readonly edgeAppearance = createEdgeAppearance(this.band);
+  private readonly plateAppearance = new PerInstanceColorAppearance({
+    translucent: true,
+    closed: false,
+    flat: true,
+  });
+  private readonly plateEdgeAppearance = new PolylineColorAppearance({ translucent: true });
+  /** Far from the ground the columns collapse to flat plates. */
+  private overview = true;
   private cameraHeightM = 150_000;
   private hoveredId: string | null = null;
   private selectedId: string | null = null;
@@ -130,22 +156,21 @@ export class AirspaceLayer {
   private readonly pickRay = new Ray();
   private readonly pickCarto = new Cartographic();
 
-  async load(
+  getLoadedCellIds(): string[] {
+    return [...this.loadedCells];
+  }
+
+  hasCell(cellId: string): boolean {
+    return this.loadedCells.has(cellId);
+  }
+
+  async loadCell(
+    cellId: string,
     features: AirspaceFeature[],
     terrainProvider: Parameters<typeof sampleTerrainMostDetailed>[0],
-    onProgress?: (fraction: number) => void,
   ) {
-    this.clearHover();
-    this.clearSelection();
-    this.collection.removeAll();
-    this.byId.clear();
-    this.batches = [];
-    this.queues.clear();
-    this.terrainHeights.clear();
-    this.labelsDirty = true;
-    this.settlingAfterPan = false;
-    this.activePills = [];
-    this.pillTagWorld.clear();
+    if (this.loadedCells.has(cellId)) return;
+    this.loadedCells.add(cellId);
 
     const terrainFeatures = features.filter((f) => f.lowerUsesTerrain);
     const samplePositions = terrainFeatures.map((f) => {
@@ -163,77 +188,131 @@ export class AirspaceLayer {
       }
     }
 
-    const total = features.length || 1;
-    for (let i = 0; i < features.length; i++) {
-      this.addFeature(features[i]);
-      if (i % 40 === 0) {
-        onProgress?.(i / total);
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-      }
+    for (const f of features) {
+      this.addFeature(f, cellId);
     }
-    for (const category of this.queues.keys()) this.flushCategory(category);
-    onProgress?.(1);
+    this.flushCell(cellId);
+    this.labelsDirty = true;
     this.updateVisibility(this.cameraHeightM);
   }
 
-  private heights(f: AirspaceFeature): { bottom: number; top: number } {
+  unloadCell(cellId: string): boolean {
+    if (!this.loadedCells.has(cellId)) return false;
+    this.loadedCells.delete(cellId);
+    let lostSelection = false;
+
+    for (let i = this.batches.length - 1; i >= 0; i--) {
+      const batch = this.batches[i];
+      if (batch.cellId !== cellId) continue;
+      if (batch.fill) this.collection.remove(batch.fill);
+      if (batch.edges) this.collection.remove(batch.edges);
+      if (batch.plate) this.collection.remove(batch.plate);
+      if (batch.plateEdges) this.collection.remove(batch.plateEdges);
+      for (const rec of batch.records) {
+        this.byId.delete(rec.feature.id);
+        this.terrainHeights.delete(rec.feature.id);
+        if (this.hoveredId === rec.feature.id) this.hoveredId = null;
+        if (this.selectedId === rec.feature.id) {
+          this.selectedId = null;
+          lostSelection = true;
+        }
+      }
+      this.batches.splice(i, 1);
+    }
+
+    for (const key of [...this.queues.keys()]) {
+      if (key.endsWith(`|${cellId}`)) this.queues.delete(key);
+    }
+
+    this.labelsDirty = true;
+    this.activePills = [];
+    this.pillTagWorld.clear();
+    if (lostSelection) this.clearSelection();
+    this.clearHover();
+    this.updateVisibility(this.cameraHeightM);
+    return lostSelection;
+  }
+
+  private flushCell(cellId: string) {
+    for (const key of this.queues.keys()) {
+      if (key.endsWith(`|${cellId}`)) {
+        const category = key.slice(0, key.length - cellId.length - 1);
+        this.flushCategory(category, cellId);
+      }
+    }
+  }
+
+  private heights(f: AirspaceFeature): { bottom: number; top: number; fillTop: number } {
     const terrain = this.terrainHeights.get(f.id) ?? 0;
     const bottom = f.lowerUsesTerrain ? terrain + f.lower.ellipsoidM : f.lower.ellipsoidM;
     const top = Math.max(bottom + 1, f.upper.ellipsoidM);
-    return { bottom, top };
+    const capped = top > FILL_CAP_M && bottom < FILL_CAP_M ? Math.max(bottom + 1, FILL_CAP_M) : top;
+    const fillTop = f.thinFill ? Math.min(capped, bottom + 140) : capped;
+    return { bottom, top, fillTop };
   }
 
-  private addFeature(f: AirspaceFeature) {
-    const style = CATEGORY_STYLES[f.category];
-    const { bottom, top } = this.heights(f);
+  private addFeature(f: AirspaceFeature, cellId: string) {
+    const { bottom, top, fillTop } = this.heights(f);
     const ring = f.ring.slice(0, -1).length === f.ring.length - 1 ? f.ring : f.ring;
     const flat = ring[0][0] === ring[ring.length - 1][0] ? ring.slice(0, -1) : ring;
 
     const positions = flat.map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat));
     const hierarchy = new PolygonHierarchy(positions);
 
+    const [lon, lat] = f.ring[0] ?? [0, 0];
+    const classStyle = classFilterApplies(filterRegionFor(lat, lon), f.category, f.icaoClass)
+      ? NA_CLASS_STYLES[f.icaoClass]
+      : undefined;
+    const style = classStyle ?? CATEGORY_STYLES[f.category];
     const fillColor = Color.fromCssColorString(style.fill);
     const outlineColor = Color.fromCssColorString(style.outline);
-    const queue = this.queueFor(f.category);
+    const queue = this.queueFor(f.category, cellId);
+    const plateEdgeIds: string[] = [];
+    const edgeIds = this.overview
+      ? []
+      : this.pushColumn(f, flat, hierarchy, bottom, top, fillTop, fillColor, outlineColor, queue.fills, queue.edges);
 
-    queue.fills.push(
-      new GeometryInstance({
-        geometry: new PolygonGeometry({
-          polygonHierarchy: hierarchy,
-          height: bottom,
-          extrudedHeight: top,
-          vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
-          arcType: ArcType.GEODESIC,
-        }),
-        id: f.id,
-        attributes: {
-          color: ColorGeometryInstanceAttribute.fromColor(fillColor),
-        },
-      }),
-    );
-
-    const topLine: Cartesian3[] = [];
-    const bottomLine: Cartesian3[] = [];
-    for (const [lon, lat] of flat) {
-      topLine.push(Cartesian3.fromDegrees(lon, lat, top));
-      bottomLine.push(Cartesian3.fromDegrees(lon, lat, bottom));
-    }
-    const edgeIds: string[] = [];
-    let edgeN = 0;
-    const pushEdge = (positions: Cartesian3[]) => {
-      const id = `${f.id}#${edgeN++}`;
-      edgeIds.push(id);
-      queue.edges.push(
+    if (!f.thinFill) {
+      let lift = 0;
+      for (let i = 0; i < f.id.length; i++) lift = (lift + f.id.charCodeAt(i)) % 8;
+      const plateHeight = bottom + 120 + lift * 40;
+      const plateFill = Color.clone(fillColor);
+      plateFill.alpha = Math.min(0.45, fillColor.alpha + 0.18);
+      queue.plates.push(
         new GeometryInstance({
-          geometry: new PolylineGeometry({ positions, width: 2, arcType: ArcType.GEODESIC }),
-          id,
-          attributes: { color: ColorGeometryInstanceAttribute.fromColor(outlineColor) },
+          geometry: new PolygonGeometry({
+            polygonHierarchy: hierarchy,
+            height: plateHeight,
+            vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+            arcType: ArcType.GEODESIC,
+            granularity: PLATE_GRANULARITY,
+          }),
+          id: f.id,
+          attributes: {
+            color: ColorGeometryInstanceAttribute.fromColor(plateFill),
+            show: new ShowGeometryInstanceAttribute(true),
+          },
         }),
       );
-    };
-    pushEdge([...topLine, topLine[0]]);
-    pushEdge([...bottomLine, bottomLine[0]]);
-    for (let i = 0; i < flat.length; i++) pushEdge([bottomLine[i], topLine[i]]);
+      const plateId = `${f.id}#p`;
+      plateEdgeIds.push(plateId);
+      const plateRing = flat.map(([pLon, pLat]) => Cartesian3.fromDegrees(pLon, pLat, plateHeight + 30));
+      queue.plateEdges.push(
+        new GeometryInstance({
+          geometry: new PolylineGeometry({
+            positions: [...plateRing, plateRing[0]],
+            width: 2,
+            arcType: ArcType.GEODESIC,
+            granularity: PLATE_GRANULARITY,
+          }),
+          id: plateId,
+          attributes: {
+            color: ColorGeometryInstanceAttribute.fromColor(outlineColor),
+            show: new ShowGeometryInstanceAttribute(true),
+          },
+        }),
+      );
+    }
 
     const { west, south, east, north } = ringBounds(flat);
     const c = centroid(f.ring);
@@ -248,6 +327,7 @@ export class AirspaceLayer {
       );
     }
     const rec: VolumeRecord = {
+      cellId,
       feature: f,
       fillColor,
       footprint: ringFootprint(flat),
@@ -264,79 +344,260 @@ export class AirspaceLayer {
       ],
       edgeEnds,
       edgeIds,
+      plateEdgeIds,
       shown: true,
       showPending: false,
       fillPrimitive: null,
       edgePrimitive: null,
+      platePrimitive: null,
+      plateEdgePrimitive: null,
       showAttrs: null,
+      plateAttrs: null,
     };
     queue.records.push(rec);
     this.byId.set(f.id, rec);
-    if (queue.fills.length >= BATCH_FEATURES || queue.edges.length >= BATCH_EDGES) {
-      this.flushCategory(f.category);
+    if (
+      queue.fills.length >= BATCH_FEATURES ||
+      queue.edges.length >= BATCH_EDGES ||
+      queue.plates.length >= BATCH_FEATURES
+    ) {
+      this.flushCategory(f.category, cellId);
     }
   }
 
-  private queueFor(category: string): CategoryQueue {
-    let queue = this.queues.get(category);
+  /** Tall columns are built up close. Zoomed out, the flat plate is enough. */
+  private pushColumn(
+    f: AirspaceFeature,
+    flat: [number, number][],
+    hierarchy: PolygonHierarchy,
+    bottom: number,
+    top: number,
+    fillTop: number,
+    fillColor: Color,
+    outlineColor: Color,
+    fills: GeometryInstance[],
+    edges: GeometryInstance[],
+  ): string[] {
+    fills.push(
+      new GeometryInstance({
+        geometry: new PolygonGeometry({
+          polygonHierarchy: hierarchy,
+          height: bottom,
+          extrudedHeight: fillTop,
+          vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+          arcType: ArcType.GEODESIC,
+        }),
+        id: f.id,
+        attributes: {
+          color: ColorGeometryInstanceAttribute.fromColor(fillColor),
+          show: new ShowGeometryInstanceAttribute(true),
+        },
+      }),
+    );
+    const topLine: Cartesian3[] = [];
+    const bottomLine: Cartesian3[] = [];
+    for (const [pLon, pLat] of flat) {
+      topLine.push(Cartesian3.fromDegrees(pLon, pLat, top));
+      bottomLine.push(Cartesian3.fromDegrees(pLon, pLat, bottom));
+    }
+    const edgeIds: string[] = [];
+    let edgeN = 0;
+    const pushEdge = (positions: Cartesian3[]) => {
+      const id = `${f.id}#${edgeN++}`;
+      edgeIds.push(id);
+      edges.push(
+        new GeometryInstance({
+          geometry: new PolylineGeometry({ positions, width: 2, arcType: ArcType.GEODESIC }),
+          id,
+          attributes: {
+            color: ColorGeometryInstanceAttribute.fromColor(outlineColor),
+            show: new ShowGeometryInstanceAttribute(true),
+          },
+        }),
+      );
+    };
+    pushEdge([...topLine, topLine[0]]);
+    pushEdge([...bottomLine, bottomLine[0]]);
+    if (fillTop < top - 30) {
+      const capLine = flat.map(([pLon, pLat]) => Cartesian3.fromDegrees(pLon, pLat, fillTop));
+      pushEdge([...capLine, capLine[0]]);
+    }
+    for (let i = 0; i < flat.length; i++) pushEdge([bottomLine[i], topLine[i]]);
+    return edgeIds;
+  }
+
+  private ensureColumns() {
+    for (const batch of this.batches) {
+      if (batch.fill) continue;
+      const fills: GeometryInstance[] = [];
+      const edges: GeometryInstance[] = [];
+      for (const rec of batch.records) {
+        const feature = rec.feature;
+        const { bottom, top, fillTop } = this.heights(feature);
+        const ring = openRing(feature.ring);
+        const positions = ring.map(([pLon, pLat]) => Cartesian3.fromDegrees(pLon, pLat));
+        const [lon, lat] = feature.ring[0] ?? [0, 0];
+        const classStyle = classFilterApplies(filterRegionFor(lat, lon), feature.category, feature.icaoClass)
+          ? NA_CLASS_STYLES[feature.icaoClass]
+          : undefined;
+        const style = classStyle ?? CATEGORY_STYLES[feature.category];
+        rec.edgeIds = this.pushColumn(
+          feature,
+          ring,
+          new PolygonHierarchy(positions),
+          bottom,
+          top,
+          fillTop,
+          rec.fillColor,
+          Color.fromCssColorString(style.outline),
+          fills,
+          edges,
+        );
+      }
+      if (fills.length === 0) continue;
+      batch.fill = this.collection.add(
+        new Primitive({
+          geometryInstances: fills,
+          appearance: this.fillAppearance,
+          asynchronous: true,
+          cull: true,
+          show: false,
+        }),
+      );
+      batch.edges = this.collection.add(
+        new Primitive({
+          geometryInstances: edges,
+          appearance: this.edgeAppearance,
+          asynchronous: true,
+          cull: true,
+          allowPicking: false,
+          show: false,
+        }),
+      );
+      for (const rec of batch.records) {
+        rec.fillPrimitive = batch.fill;
+        rec.edgePrimitive = batch.edges;
+        rec.showAttrs = null;
+        rec.showPending = true;
+      }
+      this.hasPendingShows = true;
+    }
+  }
+
+  private queueFor(category: string, cellId: string): CategoryQueue {
+    const key = `${category}|${cellId}`;
+    let queue = this.queues.get(key);
     if (!queue) {
-      queue = { fills: [], edges: [], records: [] };
-      this.queues.set(category, queue);
+      queue = { fills: [], edges: [], plates: [], plateEdges: [], records: [] };
+      this.queues.set(key, queue);
     }
     return queue;
   }
 
-  private flushCategory(category: string) {
-    const queue = this.queues.get(category);
-    if (!queue || queue.fills.length === 0) return;
-    const fill = this.collection.add(
+  private flushCategory(category: string, cellId: string) {
+    const queue = this.queues.get(`${category}|${cellId}`);
+    if (!queue || (queue.fills.length === 0 && queue.plates.length === 0)) return;
+    const fill =
+      queue.fills.length === 0
+        ? null
+        : this.collection.add(
       new Primitive({
         geometryInstances: queue.fills,
         appearance: this.fillAppearance,
         asynchronous: true,
         cull: true,
+        show: !this.overview,
       }),
     );
-    const edges = this.collection.add(
+    const edges =
+      queue.edges.length === 0
+        ? null
+        : this.collection.add(
       new Primitive({
         geometryInstances: queue.edges,
         appearance: this.edgeAppearance,
         asynchronous: true,
         cull: true,
         allowPicking: false,
+        show: !this.overview,
       }),
     );
+    const plate =
+      queue.plates.length === 0
+        ? null
+        : this.collection.add(
+            new Primitive({
+              geometryInstances: queue.plates,
+              appearance: this.plateAppearance,
+              asynchronous: true,
+              cull: true,
+              show: this.overview,
+            }),
+          );
+    const plateEdges =
+      queue.plateEdges.length === 0
+        ? null
+        : this.collection.add(
+            new Primitive({
+              geometryInstances: queue.plateEdges,
+              appearance: this.plateEdgeAppearance,
+              asynchronous: true,
+              cull: true,
+              allowPicking: false,
+              show: this.overview,
+            }),
+          );
     for (const rec of queue.records) {
       rec.fillPrimitive = fill;
       rec.edgePrimitive = edges;
+      rec.platePrimitive = plate;
+      rec.plateEdgePrimitive = plateEdges;
     }
-    this.batches.push({ category, fill, edges, records: queue.records });
-    this.queues.set(category, { fills: [], edges: [], records: [] });
+    this.batches.push({ cellId, category, fill, edges, plate, plateEdges, records: queue.records });
+    this.queues.set(`${category}|${cellId}`, {
+      fills: [],
+      edges: [],
+      plates: [],
+      plateEdges: [],
+      records: [],
+    });
   }
 
   private writeShow(rec: VolumeRecord, show: boolean): boolean {
-    const fill = rec.fillPrimitive;
-    const edges = rec.edgePrimitive;
+    const plate = this.overview && rec.plateEdgeIds.length > 0;
+    const fill = plate ? rec.platePrimitive : rec.fillPrimitive;
+    const edges = plate ? rec.plateEdgePrimitive : rec.edgePrimitive;
+    const ids = plate ? rec.plateEdgeIds : rec.edgeIds;
     if (!fill?.ready || !edges?.ready) return false;
-    if (!rec.showAttrs) {
+    const cached = plate ? rec.plateAttrs : rec.showAttrs;
+    let attrs = cached;
+    if (!attrs) {
       try {
-        const attrs = [fill.getGeometryInstanceAttributes(rec.feature.id)];
-        for (const id of rec.edgeIds) attrs.push(edges.getGeometryInstanceAttributes(id));
-        if (attrs.some((item) => !item)) return false;
-        rec.showAttrs = attrs as { show: number[] }[];
+        const next = [fill.getGeometryInstanceAttributes(rec.feature.id)];
+        for (const id of ids) next.push(edges.getGeometryInstanceAttributes(id));
+        if (next.some((item) => !item)) return false;
+        attrs = next as { show: number[] }[];
+        if (plate) rec.plateAttrs = attrs;
+        else rec.showAttrs = attrs;
       } catch {
         return false;
       }
     }
     const value = show ? SHOW_ON : SHOW_OFF;
-    for (const attrs of rec.showAttrs) attrs.show = value;
+    for (const item of attrs) item.show = value;
     return true;
   }
 
   updateVisibility(cameraHeightM: number) {
     this.cameraHeightM = cameraHeightM;
-    const { categoryVisible, isolateCategory, altBandFt } = useAppStore.getState();
-    const visKey = `${isolateCategory ?? ""}|${altBandFt[0]}|${altBandFt[1]}|${categorySignature(categoryVisible)}`;
+    const nextOverview = overviewLod(this.overview, cameraHeightM);
+    if (nextOverview !== this.overview) {
+      this.overview = nextOverview;
+      this.labelsDirty = true;
+    }
+    if (!this.overview) this.ensureColumns();
+    const { categoryVisible, classVisible, viewRegion, isolateCategory, altBandFt } = useAppStore.getState();
+    const visKey = `${this.overview ? "over" : "near"}|${viewRegion}|${isolateCategory ?? ""}|${altBandFt[0]}|${altBandFt[1]}|${categorySignature(categoryVisible)}|${categorySignature(classVisible)}`;
     if (visKey === this.visKey && !this.hasPendingShows) return;
     this.visKey = visKey;
     const bandLow = feetToMetres(altBandFt[0]);
@@ -345,32 +606,52 @@ export class AirspaceLayer {
     this.band.u_high = Math.max(bandLow + 1, bandHigh);
     let dirty = false;
     for (const batch of this.batches) {
-      const categoryOn =
-        categoryVisible[batch.category] !== false &&
-        (isolateCategory === null || isolateCategory === batch.category);
-      if (!categoryOn) {
-        if (batch.fill.show || batch.edges.show) {
-          batch.fill.show = false;
-          batch.edges.show = false;
-          for (const rec of batch.records) {
-            rec.shown = false;
-            rec.showPending = false;
-          }
-          dirty = true;
+      const drawPlate = this.overview && batch.plate !== null && batch.plateEdges !== null;
+      const activeFill = drawPlate ? batch.plate : this.overview ? null : batch.fill;
+      const activeEdges = drawPlate ? batch.plateEdges : this.overview ? null : batch.edges;
+      const wasHidden = !activeFill || !activeEdges || !activeFill.show || !activeEdges.show;
+      if (batch.fill) batch.fill.show = false;
+      if (batch.edges) batch.edges.show = false;
+      if (batch.plate) batch.plate.show = false;
+      if (batch.plateEdges) batch.plateEdges.show = false;
+      let anyShown = false;
+      const next: { rec: VolumeRecord; show: boolean; previous: boolean }[] = [];
+      for (const rec of batch.records) {
+        const terrain = this.terrainHeights.get(rec.feature.id) ?? 0;
+        const inBand = altitudeBandActive(rec.feature, bandLow, bandHigh, terrain);
+        const listed = airspaceListed(
+          viewRegion,
+          rec.feature.category,
+          rec.feature.icaoClass,
+          categoryVisible,
+          classVisible,
+        );
+        const isolated = isolateCategory === null || isolateCategory === rec.feature.category;
+        const drawable = this.overview ? rec.plateEdgeIds.length > 0 : true;
+        const show = drawable && inBand && listed && isolated;
+        if (show) anyShown = true;
+        next.push({ rec, show, previous: rec.shown });
+        rec.shown = show;
+      }
+      if (activeFill && activeEdges && (activeFill.show !== anyShown || activeEdges.show !== anyShown)) {
+        activeFill.show = anyShown;
+        activeEdges.show = anyShown;
+        dirty = true;
+      }
+      if (!anyShown || !activeFill || !activeEdges) {
+        for (const item of next) {
+          if (item.previous) dirty = true;
+          item.rec.showPending = false;
         }
         continue;
       }
-      if (!batch.fill.show || !batch.edges.show) {
-        batch.fill.show = true;
-        batch.edges.show = true;
-        dirty = true;
-      }
-      for (const rec of batch.records) {
-        const terrain = this.terrainHeights.get(rec.feature.id) ?? 0;
-        const show = altitudeBandActive(rec.feature, bandLow, bandHigh, terrain);
-        if (show === rec.shown && !rec.showPending) continue;
-        rec.shown = show;
-        rec.showPending = !this.writeShow(rec, show);
+      for (const item of next) {
+        if (this.overview && item.rec.plateEdgeIds.length === 0) {
+          item.rec.showPending = false;
+          continue;
+        }
+        if (!wasHidden && item.show === item.previous && !item.rec.showPending) continue;
+        item.rec.showPending = !this.writeShow(item.rec, item.show);
         dirty = true;
       }
     }
@@ -494,7 +775,7 @@ export class AirspaceLayer {
       const y = border.y;
       this.pillTagWorld.set(rec.feature.id, Cartesian3.clone(border.world));
       const name = pillName(rec.feature.name, rec.feature.category);
-      const type = rec.feature.category.toUpperCase();
+      const type = airspaceTypeLabel(rec.feature);
       const pillW = Math.ceil(name.length * 7.3 + type.length * 6.2 + 18);
       const pillH = 22;
       if (x < pillW / 2 + 4 || y < pillH / 2 + 4 || x > width - pillW / 2 - 4 || y > height - pillH / 2 - 4) {
@@ -597,9 +878,14 @@ export class AirspaceLayer {
     return pills;
   }
 
+  private activeFill(rec: VolumeRecord): Primitive | null {
+    if (this.overview && rec.platePrimitive) return rec.platePrimitive;
+    return rec.fillPrimitive;
+  }
+
   private applyHoverFill(rec: VolumeRecord) {
     try {
-      const attrs = rec.fillPrimitive?.getGeometryInstanceAttributes(rec.feature.id);
+      const attrs = this.activeFill(rec)?.getGeometryInstanceAttributes(rec.feature.id);
       if (!attrs) return;
       attrs.color = ColorGeometryInstanceAttribute.toValue(lighten(rec.fillColor, 0.55, 0.28));
     } catch {
@@ -609,7 +895,7 @@ export class AirspaceLayer {
 
   private restoreFill(rec: VolumeRecord) {
     try {
-      const attrs = rec.fillPrimitive?.getGeometryInstanceAttributes(rec.feature.id);
+      const attrs = this.activeFill(rec)?.getGeometryInstanceAttributes(rec.feature.id);
       if (!attrs) return;
       attrs.color = ColorGeometryInstanceAttribute.toValue(rec.fillColor);
     } catch {
@@ -667,7 +953,7 @@ export class AirspaceLayer {
 
   private applySelectionFill(rec: VolumeRecord) {
     try {
-      const attrs = rec.fillPrimitive?.getGeometryInstanceAttributes(rec.feature.id);
+      const attrs = this.activeFill(rec)?.getGeometryInstanceAttributes(rec.feature.id);
       if (!attrs) return;
       attrs.color = ColorGeometryInstanceAttribute.toValue(lighten(rec.fillColor, 0.48, 0.22));
     } catch {
@@ -690,6 +976,12 @@ export class AirspaceLayer {
     }
     this.selectedId = null;
     this.selectionOutline.removeAll();
+  }
+
+  getLoadedFeatures(): AirspaceFeature[] {
+    const out: AirspaceFeature[] = [];
+    for (const rec of this.byId.values()) out.push(rec.feature);
+    return out;
   }
 
   getFeatureAt(id: string): AirspaceFeature | undefined {

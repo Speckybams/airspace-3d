@@ -12,6 +12,9 @@ export type AirspaceCategory =
   | "prohibited"
   | "matz"
   | "glider"
+  | "moa"
+  | "alert"
+  | "warning"
   | "other";
 
 export type LimitDatum = "GND" | "MSL" | "STD" | "AGL";
@@ -38,6 +41,8 @@ export interface AirspaceFeature {
   remarks?: string;
   source: "openaip" | "override";
   ring: [number, number][];
+  /** Upper step of a stacked terminal area: outline only, with a thin floor so it stays pickable. */
+  thinFill?: boolean;
 }
 
 export interface AirportFeature {
@@ -47,7 +52,13 @@ export interface AirportFeature {
   lon: number;
   lat: number;
   elevationFt?: number;
-  runways: { designator: string; lengthM?: number; surface?: string }[];
+  runways: {
+    designator: string;
+    lengthM?: number;
+    widthM?: number;
+    surface?: string;
+    trueHeading?: number;
+  }[];
   frequencies: { value: string; name?: string }[];
 }
 
@@ -77,6 +88,8 @@ export interface SearchEntry {
   sub?: string;
   lon: number;
   lat: number;
+  /** World pack: cell file id for lazy airspace geometry load */
+  cellId?: string;
 }
 
 export interface UkDataMeta {
@@ -89,8 +102,10 @@ export interface UkDataMeta {
   countryCode?: string;
   /** Display name for legend modals */
   countryName?: string;
-  /** Dataset folder id, e.g. uk */
+  /** Dataset folder id, e.g. world */
   regionId?: string;
+  packName?: string;
+  countries?: string[];
 }
 
 export type BasemapId = "chart" | "satellite";

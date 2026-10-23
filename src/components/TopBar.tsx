@@ -16,12 +16,14 @@ const LEGACY_RECENT_KEY = "voluspace-recents";
 const SUGGESTED: { kind: SearchEntry["kind"]; match: (entry: SearchEntry) => boolean }[] = [
   { kind: "airport", match: (entry) => entry.label.startsWith("EGLL") },
   { kind: "airport", match: (entry) => entry.label.startsWith("EGKK") },
-  { kind: "airport", match: (entry) => entry.label.startsWith("EGCC") },
-  { kind: "airport", match: (entry) => entry.label.startsWith("EGPH") },
+  { kind: "airport", match: (entry) => entry.label.startsWith("KJFK") },
+  { kind: "airport", match: (entry) => entry.label.startsWith("LFPG") },
+  { kind: "airport", match: (entry) => entry.label.startsWith("EDDF") },
+  { kind: "airport", match: (entry) => entry.label.startsWith("EHAM") },
+  { kind: "airport", match: (entry) => entry.label.startsWith("CYYZ") },
   { kind: "place", match: (entry) => entry.id === "london" },
-  { kind: "place", match: (entry) => entry.id === "manchester" },
-  { kind: "place", match: (entry) => entry.id === "glasgow" },
-  { kind: "place", match: (entry) => entry.id === "cardiff" },
+  { kind: "place", match: (entry) => entry.id === "paris" },
+  { kind: "place", match: (entry) => entry.id === "new-york" },
 ];
 
 function loadRecents(): SearchEntry[] {
@@ -183,6 +185,7 @@ function ToolsMenu() {
   const setTool = useAppStore((s) => s.setTool);
   const queryAltFt = useAppStore((s) => s.queryAltFt);
   const setQueryAltFt = useAppStore((s) => s.setQueryAltFt);
+  const openRunwayGuide = useAppStore((s) => s.openRunwayGuide);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const current = TOOLS.find((item) => item.id === tool) ?? TOOLS[0];
@@ -243,6 +246,17 @@ function ToolsMenu() {
               />
             </label>
           )}
+          <button
+            type="button"
+            role="menuitem"
+            className="btn"
+            onClick={() => {
+              openRunwayGuide();
+              setOpen(false);
+            }}
+          >
+            RUNWAY GUIDE
+          </button>
         </div>
       )}
     </div>

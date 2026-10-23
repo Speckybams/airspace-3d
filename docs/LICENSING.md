@@ -4,7 +4,7 @@ Track non-commercial and replace-before-monetize dependencies.
 
 | Component | Licence | Commercial OK? | Replacement if monetizing |
 |-----------|---------|----------------|---------------------------|
-| OpenAIP UK exports | CC BY-NC 4.0 | No | UK AIP-derived dataset or licensed vendor |
+| OpenAIP exports (Europe & North America pack) | CC BY-NC 4.0 | No | National AIP-derived dataset or licensed vendor |
 | Heathrow FRZ override | Hand-authored from public CAA guidance | Verify with counsel | Official digitised FRZ |
 | Cesium ion Community | Personal / non-commercial evaluation | No for production commercial | Cesium ion Commercial plan |
 | Bing / Google imagery via ion | Via ion plan | Same as ion | Commercial ion + imagery terms |

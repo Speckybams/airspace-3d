@@ -3,6 +3,8 @@ import { getIcaoClassDefinition } from "@/lib/icaoClasses";
 import type { AirspaceFeature, AirportFeature } from "@/lib/types";
 import { useAppStore } from "@/store/appStore";
 import { IcaoClassChip } from "./IcaoClassChip";
+import { classFilterApplies } from "@/lib/filterRegion";
+import { airspaceCategoryShowsWeather } from "@/lib/aviationWeather";
 import { WeatherBlock } from "./WeatherBlock";
 
 interface Props {
@@ -19,6 +21,7 @@ export function DetailPanel({ airspaces, airports, mapLat, mapLon }: Props) {
   const setSelectedAirspace = useAppStore((s) => s.setSelectedAirspace);
   const setSelectedAirspaceId = useAppStore((s) => s.setSelectedAirspaceId);
   const openClassLegend = useAppStore((s) => s.openClassLegend);
+  const viewRegion = useAppStore((s) => s.viewRegion);
   const [rendered, setRendered] = useState(selected);
   const [open, setOpen] = useState(false);
 
@@ -60,7 +63,11 @@ export function DetailPanel({ airspaces, airports, mapLat, mapLon }: Props) {
       >
         ×
       </button>
-      <div className="chip">{rendered.category.toUpperCase()}</div>
+      <div className="chip">
+        {classFilterApplies(viewRegion, rendered.category, rendered.icaoClass)
+          ? `CLASS ${rendered.icaoClass}`
+          : rendered.category.toUpperCase()}
+      </div>
       <h2>{rendered.name}</h2>
       <p className="mono limits">
         <span className="limits-alt">
@@ -96,7 +103,9 @@ export function DetailPanel({ airspaces, airports, mapLat, mapLon }: Props) {
       )}
       {rendered.remarks && <p className="small muted">{rendered.remarks}</p>}
       <p className="small">{blurb} (General guidance only.)</p>
-      <WeatherBlock airports={airports} nearLat={mapLat} nearLon={mapLon} />
+      {airspaceCategoryShowsWeather(rendered.category) && (
+        <WeatherBlock airports={airports} nearLat={mapLat} nearLon={mapLon} />
+      )}
       <p className="muted tiny">Source: {rendered.source} · OpenAIP CC BY-NC</p>
     </aside>
   );

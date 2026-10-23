@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { NA_CLASS_LETTERS, type FilterRegion } from "@/lib/filterRegion";
 import type {
   AirspaceFeature,
   AirportFeature,
@@ -43,6 +44,13 @@ export interface AppState {
   classLegendIcaoClass: string | null;
   openClassLegend: (icaoClass: string) => void;
   closeClassLegend: () => void;
+  runwayGuideOpen: boolean;
+  openRunwayGuide: () => void;
+  closeRunwayGuide: () => void;
+  viewRegion: FilterRegion;
+  setViewRegion: (region: FilterRegion) => void;
+  classVisible: Record<string, boolean>;
+  toggleClass: (letter: string) => void;
 }
 
 const defaultCategories = [
@@ -59,6 +67,9 @@ const defaultCategories = [
   "prohibited",
   "matz",
   "glider",
+  "moa",
+  "alert",
+  "warning",
   "other",
 ];
 
@@ -75,10 +86,12 @@ export const useAppStore = create<AppState>((set) => ({
   hideAllCategories: () =>
     set((s) => ({
       categoryVisible: Object.fromEntries(Object.keys(s.categoryVisible).map((c) => [c, false])),
+      classVisible: Object.fromEntries(Object.keys(s.classVisible).map((c) => [c, false])),
     })),
   showAllCategories: () =>
     set((s) => ({
       categoryVisible: Object.fromEntries(Object.keys(s.categoryVisible).map((c) => [c, true])),
+      classVisible: Object.fromEntries(Object.keys(s.classVisible).map((c) => [c, true])),
     })),
   selectedAirspaceId: null,
   setSelectedAirspaceId: (selectedAirspaceId) => set({ selectedAirspaceId }),
@@ -118,4 +131,14 @@ export const useAppStore = create<AppState>((set) => ({
   classLegendIcaoClass: null,
   openClassLegend: (icaoClass) => set({ classLegendIcaoClass: icaoClass }),
   closeClassLegend: () => set({ classLegendIcaoClass: null }),
+  runwayGuideOpen: false,
+  openRunwayGuide: () => set({ runwayGuideOpen: true }),
+  closeRunwayGuide: () => set({ runwayGuideOpen: false }),
+  viewRegion: "uk",
+  setViewRegion: (viewRegion) => set({ viewRegion }),
+  classVisible: Object.fromEntries(NA_CLASS_LETTERS.map((letter) => [letter, true])),
+  toggleClass: (letter) =>
+    set((s) => ({
+      classVisible: { ...s.classVisible, [letter]: !s.classVisible[letter] },
+    })),
 }));

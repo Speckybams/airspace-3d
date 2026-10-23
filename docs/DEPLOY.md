@@ -39,7 +39,19 @@ If the domain is registered **with Cloudflare**, skip nameserver changes.
 
 If you change env vars later, use **Deployments → Retry deployment** on the latest build (Vite bakes `VITE_*` into the client at build time).
 
-## 3. Custom domain
+## 3. Push updates to production
+
+From the repo root on branch **`main`**:
+
+```powershell
+.\scripts\push-live.ps1 "Short description of the change"
+```
+
+The script runs `npm run lint`, commits all changes (refuses to stage `.env` or other secret env files), pushes to `origin main`, and Cloudflare Pages runs `npm run build` on the new commit. Watch **Workers & Pages → airspace-3d → Deployments** until the build is live.
+
+If there is nothing to commit, it still pushes `main`. Env-only changes do not need a new commit; use **Retry deployment** after updating variables in the dashboard (see above).
+
+## 4. Custom domain
 
 In the Pages project → **Custom domains**:
 
@@ -47,7 +59,7 @@ In the Pages project → **Custom domains**:
 2. Add **`www.voluspace.com`** → redirect **www → apex** (or the reverse; pick one canonical host).
 3. Wait for SSL **Active** (usually minutes).
 
-## 4. Lock map keys to production URL
+## 5. Lock map keys to production URL
 
 Both keys are in the client bundle; restrict by hostname:
 

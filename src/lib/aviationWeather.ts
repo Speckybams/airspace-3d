@@ -1,4 +1,19 @@
-import type { AirportFeature } from "@/lib/types";
+import type { AirspaceCategory, AirportFeature } from "@/lib/types";
+
+/** Local METAR/TAF is only shown for aerodrome-adjacent airspace, not en-route or hazard volumes. */
+const WEATHER_CATEGORIES = new Set<AirspaceCategory>([
+  "atz",
+  "ctr",
+  "cta",
+  "frz",
+  "rmz",
+  "tmz",
+  "matz",
+]);
+
+export function airspaceCategoryShowsWeather(category: AirspaceCategory): boolean {
+  return WEATHER_CATEGORIES.has(category);
+}
 
 interface MetarRow {
   icaoId?: string;

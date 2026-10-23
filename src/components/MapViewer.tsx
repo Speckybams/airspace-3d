@@ -15,27 +15,39 @@ import {
   type Scene,
 } from "cesium";
 import { AirspaceLayer, PICK_DRILL_CLICK, PICK_DRILL_HOVER } from "@/cesium/airspaceLayer";
-import { BASE_IMAGERY_LAYERS, createBasemapLayer, createOverviewLayer, setIonToken } from "@/cesium/basemaps";
+import {
+  BASE_IMAGERY_LAYERS,
+  createBasemapLayer,
+  createOverviewLayer,
+  setIonToken,
+  syncBritainChartOverlay,
+} from "@/cesium/basemaps";
 import { hideIonUpsell } from "@/cesium/credits";
 import { attachOrbitCamera, type OrbitCamera } from "@/cesium/orbitCamera";
 import { OVERVIEW_SEA } from "@/cesium/overviewMap";
 import { applyAirspace3dSky, setSharpGlobe } from "@/cesium/skybox";
+import { AirportSchematicLayer } from "@/cesium/airportSchematic";
 import { airspacesAtPoint } from "@/lib/airspace-query";
+import { airspaceTypeLabel } from "@/lib/filterRegion";
 import { feetToMetres } from "@/lib/units";
 import { viewRangeMetres } from "@/lib/viewRange";
-import type { AirspaceFeature } from "@/lib/types";
+import { airspacesForCellIds, fetchAirspaceCell } from "@/lib/worldData";
+import { cellsInView, viewRectangleFromCamera } from "@/lib/worldCells";
+import type { AirspaceFeature, AirportFeature } from "@/lib/types";
 import { useAppStore } from "@/store/appStore";
 
 interface Props {
-  airspaces: AirspaceFeature[];
+  airports: AirportFeature[];
   onPickAirspace: (f: AirspaceFeature | null) => void;
+  onLoadedAirspacesChange?: (features: AirspaceFeature[]) => void;
   onQueryResults?: (ids: string[]) => void;
   onCameraChange?: (lon: number, lat: number, heightM: number, heading: number) => void;
 }
 
 export function MapViewer({
-  airspaces,
+  airports,
   onPickAirspace,
+  onLoadedAirspacesChange,
   onQueryResults,
   onCameraChange,
 }: Props) {
@@ -44,7 +56,10 @@ export function MapViewer({
   const handlerRef = useRef<ScreenSpaceEventHandler | null>(null);
   const overlayRef = useRef<{ labelsHost: HTMLDivElement; tip: HTMLDivElement } | null>(null);
   const layerRef = useRef<AirspaceLayer | null>(null);
+  const schematicRef = useRef<AirportSchematicLayer | null>(null);
+  const airportsRef = useRef(airports);
   const orbitRef = useRef<OrbitCamera | null>(null);
+  const cellSyncRef = useRef({ busy: false, pending: false, lastMs: 0 });
   const basemap = useAppStore((s) => s.basemap);
   const categoryVisible = useAppStore((s) => s.categoryVisible);
   const altBandFt = useAppStore((s) => s.altBandFt);
@@ -58,6 +73,10 @@ export function MapViewer({
   const selectedAirspaceId = useAppStore((s) => s.selectedAirspaceId);
   const setSatelliteNotice = useAppStore((s) => s.setSatelliteNotice);
   const appliedBasemap = useRef<typeof basemap | null>(null);
+
+  useEffect(() => {
+    airportsRef.current = airports;
+  }, [airports]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -144,6 +163,9 @@ export function MapViewer({
       layerRef.current = airLayer;
       scene.primitives.add(airLayer.collection);
       scene.primitives.add(airLayer.selectionOutline);
+      const schematic = new AirportSchematicLayer();
+      schematicRef.current = schematic;
+      scene.primitives.add(schematic.collection);
       const labelsHost = document.createElement("div");
       labelsHost.className = "airspace-labels";
       const tip = document.createElement("div");
@@ -153,12 +175,7 @@ export function MapViewer({
       tip.style.display = "none";
       containerRef.current?.append(labelsHost, tip);
       overlayRef.current = { labelsHost, tip };
-      try {
-        await airLayer.load(airspaces, terrain, (fraction) => setLoad(0.74 + fraction * 0.26));
-      } catch (airspaceError) {
-        console.warn(airspaceError);
-        holdNotice = "Airspace volumes failed to draw. The map is still usable.";
-      }
+      setLoad(0.92);
       if (cancelled) return;
       airLayer.setSelected(useAppStore.getState().selectedAirspaceId);
       setSatelliteNotice(holdNotice);
@@ -188,7 +205,7 @@ export function MapViewer({
         const kind = tip.querySelector(".ty");
         const alt = tip.querySelector(".alt");
         if (title) title.textContent = feature.name.toUpperCase();
-        if (kind) kind.textContent = feature.category.toUpperCase();
+        if (kind) kind.textContent = airspaceTypeLabel(feature);
         if (alt) alt.textContent = `${feature.lower.display} — ${feature.upper.display}`;
         tip.style.display = "block";
         const margin = 8;
@@ -241,7 +258,7 @@ export function MapViewer({
           const terrainH = scene.globe.getHeight(carto) ?? 0;
           const altM = feetToMetres(queryAltFt) + terrainH;
           const hits = airspacesAtPoint(
-            airspaces,
+            airLayer.getLoadedFeatures(),
             CesiumMath.toDegrees(carto.longitude),
             CesiumMath.toDegrees(carto.latitude),
             altM,
@@ -332,18 +349,70 @@ export function MapViewer({
       observer = new ResizeObserver(resize);
       observer.observe(containerRef.current!);
 
+      const syncCells = async () => {
+        const state = cellSyncRef.current;
+        if (state.busy) {
+          state.pending = true;
+          return;
+        }
+        state.busy = true;
+        const c = widget.camera.positionCartographic;
+        const lon = CesiumMath.toDegrees(c.longitude);
+        const lat = CesiumMath.toDegrees(c.latitude);
+        const height = c.height;
+        const rect = viewRectangleFromCamera(lon, lat, height);
+        const want = new Set(cellsInView(rect.south, rect.west, rect.north, rect.east));
+        for (const id of airLayer.getLoadedCellIds()) {
+          if (!want.has(id)) {
+            if (airLayer.unloadCell(id)) onPickAirspace(null);
+          }
+        }
+        for (const id of want) {
+          if (airLayer.hasCell(id)) continue;
+          try {
+            const features = await fetchAirspaceCell(id);
+            if (cancelled) break;
+            await airLayer.loadCell(id, features, widget.terrainProvider);
+          } catch (cellError) {
+            console.warn("Cell load failed", id, cellError);
+          }
+        }
+        onLoadedAirspacesChange?.(airspacesForCellIds(airLayer.getLoadedCellIds()));
+        state.busy = false;
+        if (state.pending) {
+          state.pending = false;
+          void syncCells();
+        }
+      };
+
       widget.clock.onTick.addEventListener(() => {
         const c = widget.camera.positionCartographic;
-        onCameraChange?.(
-          CesiumMath.toDegrees(c.longitude),
-          CesiumMath.toDegrees(c.latitude),
-          c.height,
-          CesiumMath.toDegrees(widget.camera.heading),
-        );
-        airLayer.updateVisibility(c.height);
+        const lon = CesiumMath.toDegrees(c.longitude);
+        const lat = CesiumMath.toDegrees(c.latitude);
+        const height = c.height;
+        onCameraChange?.(lon, lat, height, CesiumMath.toDegrees(widget.camera.heading));
+        const chart = scene.imageryLayers.get(scene.imageryLayers.length - 1);
+        if (chart && useAppStore.getState().basemap === "chart") {
+          syncBritainChartOverlay(widget.camera, chart);
+        }
+        airLayer.updateVisibility(height);
         const pills = airLayer.layoutLabels(scene);
         if (pills) paintPills(labelsHost, pills, airLayer.getHoveredId());
+        schematic.sync(
+          containerRef.current!,
+          airportsRef.current,
+          lat,
+          lon,
+          height,
+          () => useAppStore.getState().openRunwayGuide(),
+        );
+        const now = performance.now();
+        if (now - cellSyncRef.current.lastMs > 450) {
+          cellSyncRef.current.lastMs = now;
+          void syncCells();
+        }
       });
+      void syncCells();
       } catch (error) {
         console.error(error);
         setSatelliteNotice(error instanceof Error ? error.message : "Map failed to start");
@@ -397,6 +466,8 @@ export function MapViewer({
     return useAppStore.subscribe((state, previous) => {
       if (
         state.categoryVisible === previous.categoryVisible &&
+        state.classVisible === previous.classVisible &&
+        state.viewRegion === previous.viewRegion &&
         state.isolateCategory === previous.isolateCategory &&
         state.altBandFt === previous.altBandFt
       ) {
@@ -438,11 +509,6 @@ export function MapViewer({
       dropped = true;
     };
   }, [basemap, setSatelliteNotice]);
-
-  useEffect(() => {
-    const tp = widgetRef.current?.terrainProvider;
-    if (tp) layerRef.current?.load(airspaces, tp);
-  }, [airspaces]);
 
   return <div className="map-viewport" ref={containerRef} aria-label="3D map" />;
 }

@@ -48,8 +48,9 @@ export function AboutModal({ meta, onClose }: Props) {
 
         <h3 className="about-heading">Map controls</h3>
         <ul className="about-list">
-          <li>Left drag — pan</li>
+          <li>Left drag, or one finger — pan</li>
           <li>Right drag — orbit and tilt</li>
+          <li>Two fingers — pinch to zoom, drag up or down to tilt, twist to rotate</li>
           <li>Wheel — zoom toward cursor</li>
           <li>Click — select airspace (detail panel + highlight)</li>
           <li>Double-click — fly to selected volume</li>

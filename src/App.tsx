@@ -6,6 +6,7 @@ import { DetailPanel } from "@/components/DetailPanel";
 import { StatusBar } from "@/components/StatusBar";
 import { ClassLegendModal } from "@/components/ClassLegendModal";
 import { DisclaimerModal } from "@/components/DisclaimerModal";
+import { RunwayGuideModal } from "@/components/RunwayGuideModal";
 import { AltitudeRuler } from "@/components/AltitudeRuler";
 import { CrossSectionPanel } from "@/components/CrossSectionPanel";
 import type {
@@ -14,15 +15,18 @@ import type {
   SearchEntry,
   UkDataMeta,
 } from "@/lib/types";
+import { filterRegionFor } from "@/lib/filterRegion";
+import { fetchAirspaceById } from "@/lib/worldData";
 import { useAppStore } from "@/store/appStore";
 import { decodeAppHash, encodeAppHash } from "@/lib/urlState";
 import { viewRangeMetres } from "@/lib/viewRange";
 
 export function App() {
-  const [airspaces, setAirspaces] = useState<AirspaceFeature[]>([]);
+  const [loadedAirspaces, setLoadedAirspaces] = useState<AirspaceFeature[]>([]);
   const [airports, setAirports] = useState<AirportFeature[]>([]);
   const [searchIndex, setSearchIndex] = useState<SearchEntry[]>([]);
   const [meta, setMeta] = useState<UkDataMeta | null>(null);
+  const [dataReady, setDataReady] = useState(false);
   const [status, setStatus] = useState({ lon: -0.45, lat: 51.47, heightM: 180000, heading: 0 });
 
   const setSelectedAirspace = useAppStore((s) => s.setSelectedAirspace);
@@ -34,32 +38,41 @@ export function App() {
   const loadProgress = useAppStore((s) => s.loadProgress);
   const classLegendIcaoClass = useAppStore((s) => s.classLegendIcaoClass);
   const closeClassLegend = useAppStore((s) => s.closeClassLegend);
+  const runwayGuideOpen = useAppStore((s) => s.runwayGuideOpen);
+  const closeRunwayGuide = useAppStore((s) => s.closeRunwayGuide);
 
   const country = {
-    code: meta?.countryCode ?? "GB",
-    name: meta?.countryName ?? "United Kingdom",
+    code: meta?.countryCode ?? "EU-NA",
+    name: meta?.countryName ?? "Europe & North America",
   };
 
   useEffect(() => {
     Promise.all([
-      fetch("/data/uk/airspace.json").then((r) => r.json()),
-      fetch("/data/uk/airports.json").then((r) => r.json()),
-      fetch("/data/uk/search-index.json").then((r) => r.json()),
-      fetch("/data/uk/meta.json").then((r) => r.json()),
-    ]).then(([a, apt, search, m]) => {
-      setAirspaces(a);
-      setAirports(apt);
-      setSearchIndex(search);
-      setMeta(m);
-      const hash = decodeAppHash(window.location.hash);
-      if (hash.selectedId) {
-        const sel = (a as AirspaceFeature[]).find((x) => x.id === hash.selectedId);
-        if (sel) {
-          setSelectedAirspace(sel);
-          setSelectedAirspaceId(sel.id);
+      fetch("/data/world/airports.json").then((r) => r.json()),
+      fetch("/data/world/search-index.json").then((r) => r.json()),
+      fetch("/data/world/meta.json").then((r) => r.json()),
+    ])
+      .then(([apt, search, m]) => {
+        setAirports(apt);
+        setSearchIndex(search);
+        setMeta(m);
+        setDataReady(true);
+        const hash = decodeAppHash(window.location.hash);
+        if (hash.selectedId) {
+          const entry = (search as SearchEntry[]).find(
+            (x) => x.kind === "airspace" && x.id === hash.selectedId,
+          );
+          if (entry?.cellId) {
+            void fetchAirspaceById(entry.id, entry.cellId).then((sel) => {
+              if (sel) {
+                setSelectedAirspace(sel);
+                setSelectedAirspaceId(sel.id);
+              }
+            });
+          }
         }
-      }
-    });
+      })
+      .catch((err) => console.error(err));
   }, [setSelectedAirspace, setSelectedAirspaceId]);
 
   useEffect(() => {
@@ -92,10 +105,11 @@ export function App() {
   return (
     <div className="app-shell">
       {!disclaimerAccepted && <DisclaimerModal />}
-      {classLegendIcaoClass && airspaces.length > 0 && (
+      {runwayGuideOpen && <RunwayGuideModal onClose={closeRunwayGuide} />}
+      {classLegendIcaoClass && loadedAirspaces.length > 0 && (
         <ClassLegendModal
           icaoClass={classLegendIcaoClass}
-          airspaces={airspaces}
+          airspaces={loadedAirspaces}
           country={country}
           onClose={closeClassLegend}
         />
@@ -104,9 +118,13 @@ export function App() {
         searchIndex={searchIndex}
         onSelect={(entry) => {
           if (entry.kind === "airspace") {
-            const sel = airspaces.find((x) => x.id === entry.id);
-            if (sel) onPick(sel);
-            requestCamera(entry.lon, entry.lat, viewRangeMetres(entry.kind, sel?.ring));
+            void (async () => {
+              let sel =
+                loadedAirspaces.find((x) => x.id === entry.id) ??
+                (entry.cellId ? await fetchAirspaceById(entry.id, entry.cellId) : null);
+              if (sel) onPick(sel);
+              requestCamera(entry.lon, entry.lat, viewRangeMetres(entry.kind, sel?.ring));
+            })();
             return;
           }
           onPick(null);
@@ -116,14 +134,19 @@ export function App() {
       <div className="app-body">
         <LeftRail />
         <div className="map-stack">
-          {airspaces.length > 0 && (
+          {dataReady && (
             <MapViewer
               key="viewer"
-              airspaces={airspaces}
+              airports={airports}
               onPickAirspace={onPick}
-              onCameraChange={(lon, lat, heightM, heading) =>
-                setStatus({ lon, lat, heightM, heading })
-              }
+              onLoadedAirspacesChange={setLoadedAirspaces}
+              onCameraChange={(lon, lat, heightM, heading) => {
+                setStatus({ lon, lat, heightM, heading });
+                const region = filterRegionFor(lat, lon);
+                if (useAppStore.getState().viewRegion !== region) {
+                  useAppStore.getState().setViewRegion(region);
+                }
+              }}
             />
           )}
           {loadProgress !== null && (
@@ -139,11 +162,11 @@ export function App() {
             </div>
           )}
           <AltitudeRuler />
-          {tool === "crossSection" && <CrossSectionPanel airspaces={airspaces} />}
+          {tool === "crossSection" && <CrossSectionPanel airspaces={loadedAirspaces} />}
           {satelliteNotice && <div className="map-notice">{satelliteNotice}</div>}
           <DetailPanel
             airports={airports}
-            airspaces={airspaces}
+            airspaces={loadedAirspaces}
             mapLat={status.lat}
             mapLon={status.lon}
           />
