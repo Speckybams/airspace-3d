@@ -27,7 +27,11 @@ import { attachOrbitCamera, type OrbitCamera } from "@/cesium/orbitCamera";
 import { OVERVIEW_SEA } from "@/cesium/overviewMap";
 import { applyAirspace3dSky, setSharpGlobe } from "@/cesium/skybox";
 import { AirportSchematicLayer } from "@/cesium/airportSchematic";
+import { ToolOverlayLayer } from "@/cesium/toolOverlay";
 import { airspacesAtPoint } from "@/lib/airspace-query";
+import { snapAirport } from "@/lib/nearestAirport";
+import { buildSectionProfile } from "@/lib/sectionProfile";
+import type { ProfileBand, ProfileSample } from "@/lib/sectionProfile";
 import { airspaceTypeLabel } from "@/lib/filterRegion";
 import { feetToMetres } from "@/lib/units";
 import { viewRangeMetres } from "@/lib/viewRange";
@@ -40,7 +44,9 @@ interface Props {
   airports: AirportFeature[];
   onPickAirspace: (f: AirspaceFeature | null) => void;
   onLoadedAirspacesChange?: (features: AirspaceFeature[]) => void;
-  onQueryResults?: (ids: string[]) => void;
+  onSectionProfileChange?: (
+    profile: { lengthM: number; samples: ProfileSample[]; bands: ProfileBand[] } | null,
+  ) => void;
   onCameraChange?: (lon: number, lat: number, heightM: number, heading: number) => void;
 }
 
@@ -48,7 +54,7 @@ export function MapViewer({
   airports,
   onPickAirspace,
   onLoadedAirspacesChange,
-  onQueryResults,
+  onSectionProfileChange,
   onCameraChange,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -57,6 +63,8 @@ export function MapViewer({
   const overlayRef = useRef<{ labelsHost: HTMLDivElement; tip: HTMLDivElement } | null>(null);
   const layerRef = useRef<AirspaceLayer | null>(null);
   const schematicRef = useRef<AirportSchematicLayer | null>(null);
+  const toolOverlayRef = useRef<ToolOverlayLayer | null>(null);
+  const onSectionProfileRef = useRef(onSectionProfileChange);
   const airportsRef = useRef(airports);
   const orbitRef = useRef<OrbitCamera | null>(null);
   const cellSyncRef = useRef({ busy: false, pending: false, lastMs: 0 });
@@ -65,8 +73,6 @@ export function MapViewer({
   const altBandFt = useAppStore((s) => s.altBandFt);
   const isolateCategory = useAppStore((s) => s.isolateCategory);
   const terrainExaggeration = useAppStore((s) => s.terrainExaggeration);
-  const tool = useAppStore((s) => s.tool);
-  const queryAltFt = useAppStore((s) => s.queryAltFt);
   const chartTopDown = useAppStore((s) => s.chartTopDown);
   const cameraRequest = useAppStore((s) => s.cameraRequest);
   const requestCamera = useAppStore((s) => s.requestCamera);
@@ -79,11 +85,16 @@ export function MapViewer({
   }, [airports]);
 
   useEffect(() => {
+    onSectionProfileRef.current = onSectionProfileChange;
+  }, [onSectionProfileChange]);
+
+  useEffect(() => {
     if (!containerRef.current) return;
     let cancelled = false;
     let observer: ResizeObserver | undefined;
     let stopCredits: (() => void) | undefined;
     let onKey: ((event: KeyboardEvent) => void) | undefined;
+    let unsubTools: (() => void) | undefined;
     const token = import.meta.env.VITE_CESIUM_ION_ACCESS_TOKEN ?? "";
     setIonToken(token);
     const setLoad = (value: number | null) => {
@@ -166,6 +177,10 @@ export function MapViewer({
       const schematic = new AirportSchematicLayer();
       schematicRef.current = schematic;
       scene.primitives.add(schematic.collection);
+      const toolOverlay = new ToolOverlayLayer();
+      toolOverlayRef.current = toolOverlay;
+      scene.primitives.add(toolOverlay.collection);
+      toolOverlay.sync(useAppStore.getState().tool, useAppStore.getState().mapToolState);
       const labelsHost = document.createElement("div");
       labelsHost.className = "airspace-labels";
       const tip = document.createElement("div");
@@ -242,33 +257,103 @@ export function MapViewer({
         requestCamera(lon / count, lat / count, viewRangeMetres("airspace", feature.ring));
       };
 
-      let clickDelay: ReturnType<typeof setTimeout> | null = null;
-      const runSingleClick = (position: Cartesian2) => {
-        const picked = pickAirspaceAt(position);
-        if (picked) {
-          selectAirspace(picked);
+      const pickGround = (position: Cartesian2) => {
+        const ray = widget.camera.getPickRay(position);
+        if (!ray) return null;
+        const pos = scene.globe.pick(ray, scene);
+        if (!pos) return null;
+        const carto = Cartographic.fromCartesian(pos, Ellipsoid.WGS84, new Cartographic());
+        return {
+          lon: CesiumMath.toDegrees(carto.longitude),
+          lat: CesiumMath.toDegrees(carto.latitude),
+          terrainM: scene.globe.getHeight(carto) ?? 0,
+        };
+      };
+
+      const refreshSectionProfile = () => {
+        const cb = onSectionProfileRef.current;
+        if (!cb) return;
+        const section = useAppStore.getState().mapToolState.section;
+        if (section.length !== 2) {
+          cb(null);
           return;
         }
-        if (tool === "query") {
-          const ray = widget.camera.getPickRay(position);
-          if (!ray) return;
-          const pos = scene.globe.pick(ray, scene);
-          if (!pos) return;
-          const carto = Cartographic.fromCartesian(pos, Ellipsoid.WGS84, new Cartographic());
-          const terrainH = scene.globe.getHeight(carto) ?? 0;
-          const altM = feetToMetres(queryAltFt) + terrainH;
+        const [a, b] = section;
+        cb(
+          buildSectionProfile(
+            airLayer.getLoadedFeatures(),
+            a.lon,
+            a.lat,
+            b.lon,
+            b.lat,
+            (lon, lat) => ToolOverlayLayer.terrainHeight(scene, lon, lat),
+          ),
+        );
+      };
+
+      const syncToolOverlay = () => {
+        const { tool: activeTool, mapToolState } = useAppStore.getState();
+        toolOverlay.sync(activeTool, mapToolState);
+        refreshSectionProfile();
+        scene.requestRender();
+      };
+
+      let clickDelay: ReturnType<typeof setTimeout> | null = null;
+      const runSingleClick = (position: Cartesian2) => {
+        const activeTool = useAppStore.getState().tool;
+        if (activeTool === "navigate") {
+          const picked = pickAirspaceAt(position);
+          if (picked) selectAirspace(picked);
+          else selectAirspace(null);
+          return;
+        }
+
+        const ground = pickGround(position);
+        if (!ground) return;
+        const setMapToolState = useAppStore.getState().setMapToolState;
+
+        if (activeTool === "query") {
+          setMapToolState((s) => ({ ...s, query: ground }));
+          const altM = feetToMetres(useAppStore.getState().queryAltFt) + ground.terrainM;
           const hits = airspacesAtPoint(
             airLayer.getLoadedFeatures(),
-            CesiumMath.toDegrees(carto.longitude),
-            CesiumMath.toDegrees(carto.latitude),
+            ground.lon,
+            ground.lat,
             altM,
-            terrainH,
+            ground.terrainM,
           );
-          onQueryResults?.(hits.map((h) => h.id));
           if (hits[0]) selectAirspace(hits[0]);
           else selectAirspace(null);
-        } else {
-          selectAirspace(null);
+          syncToolOverlay();
+          return;
+        }
+
+        if (activeTool === "measure") {
+          setMapToolState((s) => ({ ...s, measure: [...s.measure, ground] }));
+          syncToolOverlay();
+          return;
+        }
+
+        if (activeTool === "crossSection") {
+          setMapToolState((s) => {
+            if (s.section.length >= 2) return { ...s, section: [ground] };
+            return { ...s, section: [...s.section, ground] };
+          });
+          syncToolOverlay();
+          return;
+        }
+
+        if (activeTool === "route") {
+          const snap = snapAirport(airportsRef.current, ground.lat, ground.lon);
+          const wp = snap
+            ? {
+                lon: snap.apt.lon,
+                lat: snap.apt.lat,
+                label: snap.apt.icao ?? snap.apt.name,
+              }
+            : ground;
+          setMapToolState((s) => ({ ...s, route: [...s.route, wp] }));
+          syncToolOverlay();
         }
       };
 
@@ -285,11 +370,19 @@ export function MapViewer({
           clearTimeout(clickDelay);
           clickDelay = null;
         }
+        if (useAppStore.getState().tool !== "navigate") return;
         const picked = pickAirspaceAt(movement.position);
         if (!picked) return;
         selectAirspace(picked);
         focusAirspace(picked);
       }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
+
+      unsubTools = useAppStore.subscribe((state, previous) => {
+        if (state.tool === previous.tool && state.mapToolState === previous.mapToolState) return;
+        toolOverlay.sync(state.tool, state.mapToolState);
+        refreshSectionProfile();
+        scene.requestRender();
+      });
 
       let hoverId: string | null = null;
       const endHover = () => {
@@ -378,6 +471,7 @@ export function MapViewer({
           }
         }
         onLoadedAirspacesChange?.(airspacesForCellIds(airLayer.getLoadedCellIds()));
+        refreshSectionProfile();
         state.busy = false;
         if (state.pending) {
           state.pending = false;
@@ -421,6 +515,7 @@ export function MapViewer({
 
     return () => {
       cancelled = true;
+      unsubTools?.();
       useAppStore.getState().setLoadProgress(null);
       if (onKey) {
         window.removeEventListener("keydown", onKey);

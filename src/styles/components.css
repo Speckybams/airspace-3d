@@ -503,7 +503,41 @@
 }
 
 .runway-guide-modal {
-  max-width: 520px;
+  max-width: min(720px, 96vw);
+}
+
+.runway-guide-sub {
+  margin: 12px 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.runway-meta-dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  margin: 8px 0;
+}
+
+.runway-meta-dl dt {
+  font-weight: 600;
+  display: inline;
+  margin-right: 6px;
+}
+
+.runway-meta-dl dd {
+  display: inline;
+  margin: 0;
+}
+
+.runway-select select {
+  width: 100%;
+}
+
+.runway-guide-legend .swatch.yellow {
+  background: #fef08a;
 }
 
 .runway-guide-svg {

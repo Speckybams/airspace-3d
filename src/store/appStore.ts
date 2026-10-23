@@ -4,8 +4,10 @@ import type {
   AirspaceFeature,
   AirportFeature,
   BasemapId,
+  MapToolState,
   ToolMode,
 } from "@/lib/types";
+import { emptyMapToolState } from "@/lib/types";
 
 export interface AppState {
   basemap: BasemapId;
@@ -22,6 +24,9 @@ export interface AppState {
   setSelectedAirport: (a: AirportFeature | null) => void;
   tool: ToolMode;
   setTool: (t: ToolMode) => void;
+  mapToolState: MapToolState;
+  setMapToolState: (state: MapToolState | ((prev: MapToolState) => MapToolState)) => void;
+  resetMapToolState: () => void;
   altBandFt: [number, number];
   setAltBandFt: (band: [number, number]) => void;
   terrainExaggeration: number;
@@ -100,7 +105,13 @@ export const useAppStore = create<AppState>((set) => ({
   selectedAirport: null,
   setSelectedAirport: (selectedAirport) => set({ selectedAirport }),
   tool: "navigate",
-  setTool: (tool) => set({ tool }),
+  mapToolState: emptyMapToolState(),
+  setTool: (tool) => set({ tool, mapToolState: emptyMapToolState() }),
+  setMapToolState: (updater) =>
+    set((s) => ({
+      mapToolState: typeof updater === "function" ? updater(s.mapToolState) : updater,
+    })),
+  resetMapToolState: () => set({ mapToolState: emptyMapToolState() }),
   altBandFt: [0, 66000],
   setAltBandFt: (altBandFt) => set({ altBandFt }),
   terrainExaggeration: 1,

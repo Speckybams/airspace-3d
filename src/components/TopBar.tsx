@@ -171,6 +171,7 @@ export function TopBar({
         )}
       </div>
       <ToolsMenu />
+      <RunwayGuideButton />
       </div>
       <div className="brand-by">
         <span>BY</span>
@@ -180,12 +181,18 @@ export function TopBar({
   );
 }
 
+function RunwayGuideButton() {
+  const openRunwayGuide = useAppStore((s) => s.openRunwayGuide);
+  return (
+    <button type="button" className="btn runway-guide-btn" onClick={() => openRunwayGuide()}>
+      RUNWAY
+    </button>
+  );
+}
+
 function ToolsMenu() {
   const tool = useAppStore((s) => s.tool);
   const setTool = useAppStore((s) => s.setTool);
-  const queryAltFt = useAppStore((s) => s.queryAltFt);
-  const setQueryAltFt = useAppStore((s) => s.setQueryAltFt);
-  const openRunwayGuide = useAppStore((s) => s.openRunwayGuide);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const current = TOOLS.find((item) => item.id === tool) ?? TOOLS[0];
@@ -229,34 +236,12 @@ function ToolsMenu() {
               className={tool === item.id ? "btn active" : "btn"}
               onClick={() => {
                 setTool(item.id);
-                if (item.id !== "query") setOpen(false);
+                setOpen(false);
               }}
             >
               {item.label}
             </button>
           ))}
-          {tool === "query" && (
-            <label className="field">
-              <span>Query alt (ft)</span>
-              <input
-                type="number"
-                className="mono"
-                value={queryAltFt}
-                onChange={(e) => setQueryAltFt(Number(e.target.value))}
-              />
-            </label>
-          )}
-          <button
-            type="button"
-            role="menuitem"
-            className="btn"
-            onClick={() => {
-              openRunwayGuide();
-              setOpen(false);
-            }}
-          >
-            RUNWAY GUIDE
-          </button>
         </div>
       )}
     </div>

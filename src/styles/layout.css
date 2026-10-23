@@ -245,6 +245,23 @@
   display: flex;
 }
 
+.btn.runway-guide-btn {
+  flex: none;
+  align-self: stretch;
+  padding: 6px 12px;
+  border: 1px solid #22d3ee;
+  color: #67e8f9;
+  background: rgba(8, 47, 73, 0.45);
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.btn.runway-guide-btn:hover {
+  background: rgba(8, 47, 73, 0.85);
+  border-color: #67e8f9;
+}
+
 .btn.tools-tab {
   display: flex;
   align-items: center;
@@ -672,6 +689,84 @@
   text-transform: uppercase;
 }
 
+.tool-panel {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  z-index: 6;
+  width: min(360px, calc(100% - 16px));
+  max-height: min(42vh, 320px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.tool-panel-wide {
+  width: min(680px, calc(100% - 16px));
+  max-height: min(48vh, 360px);
+}
+
+.tool-panel h3 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.tool-panel-actions {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.tool-hit-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.tool-hit-list li button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tool-hit-list li button:hover {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.tool-hit-list.compact li {
+  padding: 2px 0;
+}
+
+.tool-measure-legs {
+  margin: 8px 0;
+  padding-left: 1.2em;
+}
+
+.tool-route-list {
+  margin: 8px 0;
+  padding-left: 1.2em;
+}
+
+.tool-route-leg {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
 .cross-section-panel {
   position: absolute;
   bottom: 8px;
@@ -681,6 +776,15 @@
   border: 1px solid var(--border);
   padding: 8px;
   z-index: 4;
+}
+
+.section-profile-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin-top: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
 }
 
 .rail-toggle {
@@ -762,6 +866,23 @@
   .btn.tools-tab {
     gap: 6px;
     padding: 4px 8px;
+  }
+
+  .btn.runway-guide-btn {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+
+  .tool-panel {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    bottom: 52px;
+    max-height: 36vh;
+  }
+
+  .tool-panel-wide {
+    width: auto;
   }
 
   .tools-panel {

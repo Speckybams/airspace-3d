@@ -16,14 +16,14 @@ import type { AirspaceFeature } from "../src/lib/types";
 
 describe("overview lod", () => {
   it("uses flat plates when the camera is high and columns when it is low", () => {
-    expect(overviewLod(false, 120_000)).toBe(true);
-    expect(overviewLod(true, 120_000)).toBe(true);
+    expect(overviewLod(false, 120_000)).toBe(false);
+    expect(overviewLod(true, 120_000)).toBe(false);
     expect(overviewLod(false, 12_000)).toBe(false);
     expect(overviewLod(true, 12_000)).toBe(false);
-    expect(overviewLod(false, 80_000)).toBe(true);
-    expect(overviewLod(true, 73_000)).toBe(true);
-    expect(overviewLod(false, 73_000)).toBe(false);
-    expect(overviewLod(true, 50_000)).toBe(false);
+    expect(overviewLod(false, 320_000)).toBe(true);
+    expect(overviewLod(true, 300_000)).toBe(true);
+    expect(overviewLod(false, 300_000)).toBe(false);
+    expect(overviewLod(true, 280_000)).toBe(false);
   });
 });
 

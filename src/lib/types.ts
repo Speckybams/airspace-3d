@@ -116,3 +116,26 @@ export type ToolMode =
   | "measure"
   | "crossSection"
   | "route";
+
+export interface LonLat {
+  lon: number;
+  lat: number;
+}
+
+export interface RouteWaypoint extends LonLat {
+  label?: string;
+}
+
+export interface MapToolState {
+  query: { lon: number; lat: number; terrainM: number } | null;
+  measure: LonLat[];
+  section: LonLat[];
+  route: RouteWaypoint[];
+}
+
+export const emptyMapToolState = (): MapToolState => ({
+  query: null,
+  measure: [],
+  section: [],
+  route: [],
+});

@@ -9,6 +9,10 @@ import { DisclaimerModal } from "@/components/DisclaimerModal";
 import { RunwayGuideModal } from "@/components/RunwayGuideModal";
 import { AltitudeRuler } from "@/components/AltitudeRuler";
 import { CrossSectionPanel } from "@/components/CrossSectionPanel";
+import { QueryToolPanel } from "@/components/QueryToolPanel";
+import { MeasureToolPanel } from "@/components/MeasureToolPanel";
+import { RouteToolPanel } from "@/components/RouteToolPanel";
+import type { ProfileBand, ProfileSample } from "@/lib/sectionProfile";
 import type {
   AirspaceFeature,
   AirportFeature,
@@ -28,6 +32,11 @@ export function App() {
   const [meta, setMeta] = useState<UkDataMeta | null>(null);
   const [dataReady, setDataReady] = useState(false);
   const [status, setStatus] = useState({ lon: -0.45, lat: 51.47, heightM: 180000, heading: 0 });
+  const [sectionProfile, setSectionProfile] = useState<{
+    lengthM: number;
+    samples: ProfileSample[];
+    bands: ProfileBand[];
+  } | null>(null);
 
   const setSelectedAirspace = useAppStore((s) => s.setSelectedAirspace);
   const setSelectedAirspaceId = useAppStore((s) => s.setSelectedAirspaceId);
@@ -76,6 +85,10 @@ export function App() {
   }, [setSelectedAirspace, setSelectedAirspaceId]);
 
   useEffect(() => {
+    if (tool !== "crossSection") setSectionProfile(null);
+  }, [tool]);
+
+  useEffect(() => {
     return useAppStore.subscribe((state, previous) => {
       if (
         state.basemap === previous.basemap &&
@@ -105,7 +118,14 @@ export function App() {
   return (
     <div className="app-shell">
       {!disclaimerAccepted && <DisclaimerModal />}
-      {runwayGuideOpen && <RunwayGuideModal onClose={closeRunwayGuide} />}
+      {runwayGuideOpen && (
+        <RunwayGuideModal
+          airports={airports}
+          mapLat={status.lat}
+          mapLon={status.lon}
+          onClose={closeRunwayGuide}
+        />
+      )}
       {classLegendIcaoClass && loadedAirspaces.length > 0 && (
         <ClassLegendModal
           icaoClass={classLegendIcaoClass}
@@ -140,6 +160,7 @@ export function App() {
               airports={airports}
               onPickAirspace={onPick}
               onLoadedAirspacesChange={setLoadedAirspaces}
+              onSectionProfileChange={setSectionProfile}
               onCameraChange={(lon, lat, heightM, heading) => {
                 setStatus({ lon, lat, heightM, heading });
                 const region = filterRegionFor(lat, lon);
@@ -162,7 +183,10 @@ export function App() {
             </div>
           )}
           <AltitudeRuler />
-          {tool === "crossSection" && <CrossSectionPanel airspaces={loadedAirspaces} />}
+          {tool === "query" && <QueryToolPanel airspaces={loadedAirspaces} onSelectAirspace={onPick} />}
+          {tool === "measure" && <MeasureToolPanel />}
+          {tool === "route" && <RouteToolPanel airspaces={loadedAirspaces} />}
+          {tool === "crossSection" && <CrossSectionPanel profile={sectionProfile} />}
           {satelliteNotice && <div className="map-notice">{satelliteNotice}</div>}
           <DetailPanel
             airports={airports}
