@@ -95,7 +95,11 @@ function DataBody() {
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">
             OpenStreetMap
           </a>{" "}
-          (ODbL) and CARTO dark tiles where configured.
+          (ODbL) via{" "}
+          <a href="https://carto.com/attribution/" target="_blank" rel="noopener noreferrer">
+            CARTO
+          </a>{" "}
+          raster tiles.
         </li>
         <li>
           <strong>Satellite fallback:</strong> EOX Sentinel-2 where Cesium ion imagery is unavailable (CC

@@ -3,7 +3,6 @@ import {
   ImageryLayer,
   Ion,
   IonImageryProvider,
-  OpenStreetMapImageryProvider,
   Rectangle,
   SingleTileImageryProvider,
   UrlTemplateImageryProvider,
@@ -17,34 +16,34 @@ import {
   OVERVIEW_URL,
 } from "@/cesium/overviewMap";
 
-const OSM_URL = "https://tile.openstreetmap.org/";
+const CARTO_CREDIT = new Credit("© OpenStreetMap contributors © CARTO");
 
-function createCartoDarkProvider(): UrlTemplateImageryProvider | null {
-  const cartoKey = import.meta.env.VITE_CARTO_BASEMAPS_KEY?.trim();
-  if (!cartoKey) return null;
-  const key = encodeURIComponent(cartoKey);
+/** CARTO raster URL; optional API key from https://carto.com/basemaps/apikey/ */
+function cartoRasterUrl(style: "voyager" | "dark_all"): string {
+  const key = import.meta.env.VITE_CARTO_BASEMAPS_KEY?.trim();
+  const base = `https://basemaps.cartocdn.com/rastertiles/${style}/{z}/{x}/{y}.png`;
+  if (!key) return base;
+  return `${base}?key=${encodeURIComponent(key)}`;
+}
+
+/**
+ * Chart + dark street maps via CARTO (OSM-derived). Direct tile.openstreetmap.org is blocked on
+ * production sites per OSMF tile policy; localhost may still work in dev.
+ */
+function createCartoVoyagerProvider(): UrlTemplateImageryProvider {
   return new UrlTemplateImageryProvider({
-    url: `https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png?key=${key}`,
-    credit: new Credit("© OpenStreetMap contributors © CARTO"),
+    url: cartoRasterUrl("voyager"),
+    credit: CARTO_CREDIT,
     maximumLevel: 20,
   });
 }
 
-/** Same OSM tiles as CHART, tuned for a dark street-map look (runways, roads, labels). */
-function applyDarkStreetImageryStyle(layer: ImageryLayer): void {
-  layer.brightness = 0.36;
-  layer.contrast = 1.28;
-  layer.saturation = 0.12;
-  layer.gamma = 0.82;
-}
-
-/** Dark street map: CARTO Dark Matter when keyed, otherwise styled OSM. */
-function createDarkStreetLayer(): ImageryLayer {
-  const carto = createCartoDarkProvider();
-  if (carto) return new ImageryLayer(carto);
-  const layer = new ImageryLayer(createOsmProvider());
-  applyDarkStreetImageryStyle(layer);
-  return layer;
+function createCartoDarkProvider(): UrlTemplateImageryProvider {
+  return new UrlTemplateImageryProvider({
+    url: cartoRasterUrl("dark_all"),
+    credit: CARTO_CREDIT,
+    maximumLevel: 20,
+  });
 }
 
 /** Globe tint before tiles load; darker when using the dark basemap. */
@@ -54,14 +53,10 @@ export function globeSeaCssForBasemap(id: BasemapId): string {
   return id === "dark" ? DARK_SEA : OVERVIEW_SEA;
 }
 
-function createOsmProvider(): OpenStreetMapImageryProvider {
-  return new OpenStreetMapImageryProvider({ url: OSM_URL });
-}
-
-/** Bottom imagery layer: OSM for chart/satellite, dark street map for dark mode. */
+/** Bottom imagery layer: CARTO voyager (chart/satellite underlay) or dark matter (dark mode). */
 export function createMapUnderlayLayer(id: "chart" | "dark"): ImageryLayer {
-  if (id === "dark") return createDarkStreetLayer();
-  return new ImageryLayer(createOsmProvider());
+  if (id === "dark") return new ImageryLayer(createCartoDarkProvider());
+  return new ImageryLayer(createCartoVoyagerProvider());
 }
 
 export function replaceMapUnderlay(scene: Scene, id: "chart" | "dark"): void {
@@ -120,12 +115,10 @@ export async function createBasemapLayer(
       }
     }
     case "dark":
-      return { layer: createDarkStreetLayer() };
+      return { layer: new ImageryLayer(createCartoDarkProvider()) };
     case "chart":
-    default: {
-      // OSM everywhere on CHART, including Britain, so aerodrome runways and taxiways stay visible when zoomed in.
-      return { layer: new ImageryLayer(createOsmProvider()) };
-    }
+    default:
+      return { layer: new ImageryLayer(createCartoVoyagerProvider()) };
   }
 }
 
