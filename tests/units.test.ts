@@ -80,7 +80,7 @@ describe("touch orbit", () => {
 
   it("follows a finger twist without jumping across the angle wrap", () => {
     const next = poseAfterPinch(pose, { prevDist: 10, nextDist: 10, dAngle: Math.PI + 0.2, dHeight: 0 });
-    expect(next.heading).toBeCloseTo(-Math.PI + 0.2, 5);
+    expect(next.heading).toBeCloseTo(Math.PI - 0.2, 5);
     expect(next.range).toBe(pose.range);
   });
 });

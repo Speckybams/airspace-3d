@@ -70,7 +70,8 @@ export function poseAfterPinch(pose: OrbitPose, step: PinchStep): OrbitPose {
     range = clamp(pose.range * (step.prevDist / step.nextDist), MIN_RANGE, MAX_RANGE);
   }
   return {
-    heading: pose.heading + wrapTwist(step.dAngle),
+    // Negated so the map rotates with the fingers (Cesium pinch angle is opposite natural twist).
+    heading: pose.heading - wrapTwist(step.dAngle),
     pitch: clamp(pose.pitch - step.dHeight * PINCH_TILT_GAIN, MIN_PITCH, MAX_PITCH),
     range,
   };

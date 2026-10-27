@@ -68,11 +68,16 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
   const wheelFocus = new Cartesian2();
   const zoomFocus = new Cartesian3();
   let hasWheelFocus = false;
+  let pinching = false;
+  const pinchPivot = new Cartesian3();
 
   function frame() {
     // Stay locked to a ground point, and pitch down as range grows so the
-    // globe cannot slide below the frame into empty sky.
-    pitch = keepGlobeInView(range, pitch);
+    // globe cannot slide below the frame into empty sky. Skip while pinching
+    // so tilt gestures are not fought mid-gesture (feels like the map slides away).
+    if (!pinching) {
+      pitch = keepGlobeInView(range, pitch);
+    }
     Cartesian3.clone(anchor, target);
     viewOffset.heading = heading;
     viewOffset.pitch = pitch;
@@ -230,14 +235,25 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
     cancelMotion();
     mode = "none";
     holdingGround = false;
+    pinching = true;
     wheelFocus.x = (event.position1.x + event.position2.x) * 0.5;
     wheelFocus.y = (event.position1.y + event.position2.y) * 0.5;
     hasWheelFocus = true;
+    if (groundUnder(wheelFocus, pinchPivot)) {
+      Cartesian3.clone(pinchPivot, anchor);
+      Ellipsoid.WGS84.cartesianToCartographic(anchor, carto);
+      carto.height = 0;
+      Ellipsoid.WGS84.cartographicToCartesian(carto, anchor);
+      Cartesian3.clone(anchor, zoomFocus);
+    }
   }, ScreenSpaceEventType.PINCH_START);
 
   handler.setInputAction(() => {
     mode = "none";
     holdingGround = false;
+    pinching = false;
+    frame();
+    scene.requestRender();
   }, ScreenSpaceEventType.PINCH_END);
 
   const onPinch: ScreenSpaceEventHandler.TwoPointMotionEventCallback = (event) => {
@@ -259,7 +275,10 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
       pitch = next.pitch;
       const prevRange = range;
       range = next.range;
-      shiftAnchorForZoom(prevRange, range);
+      const logZoom = Math.abs(Math.log(range / prevRange));
+      if (logZoom > 0.015) {
+        shiftAnchorForZoom(prevRange, range);
+      }
       frame();
       scene.requestRender();
   };
