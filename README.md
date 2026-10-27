@@ -7,7 +7,7 @@
 ```powershell
 cd d:\STARLING-Airspace
 copy .env.example .env
-# Add VITE_CESIUM_ION_ACCESS_TOKEN and VITE_OS_API_KEY
+# Add VITE_CESIUM_ION_ACCESS_TOKEN (VITE_OS_API_KEY is optional; OS tile proxy is unused by the basemap today)
 npm install
 npm run build:data
 npm run dev
@@ -20,7 +20,7 @@ Open http://localhost:5173
 - **Build command:** `npm run build`
 - **Output directory:** `dist`
 - **Push live:** `.\scripts\push-live.ps1 "Your commit message"` (pushes `main` → GitHub → Pages rebuild)
-- **Secrets:** never commit `.env`. Set `VITE_CESIUM_ION_ACCESS_TOKEN` and `VITE_OS_API_KEY` in Cloudflare Pages → Environment variables (Production + Preview), then retry the latest deployment if you change them. Restrict ion/OS keys to `https://voluspace.com`.
+- **Secrets:** never commit `.env`. Set `VITE_CESIUM_ION_ACCESS_TOKEN` in Cloudflare Pages → Environment variables (Production + Preview), then retry the latest deployment if you change them. Restrict the ion token to `https://voluspace.com`. CHART and DARK basemaps use OpenStreetMap; satellite uses Cesium ion (EOX fallback).
 
 Full checklist: [docs/DEPLOY.md](docs/DEPLOY.md). Runtime: [docs/HOSTING.md](docs/HOSTING.md).
 

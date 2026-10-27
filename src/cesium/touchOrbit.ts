@@ -30,6 +30,30 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+const EARTH_RADIUS_M = 6_378_137;
+/** Radians of the frame below the view centre that can still see the ground. */
+const GLOBE_HALF_VIEW = 0.42;
+const GLOBE_MARGIN = 0.1;
+
+/**
+ * Shallow pitch at a long range looks over the horizon into the sky and the
+ * map leaves the screen. Pull the view down just enough that the globe stays
+ * in frame. A view that is already steep enough is left alone.
+ */
+export function keepGlobeInView(range: number, pitch: number): number {
+  const minDown = -MAX_PITCH;
+  const maxDown = -MIN_PITCH;
+  let down = clamp(-pitch, minDown, maxDown);
+  for (let i = 0; i < 8; i++) {
+    const height = Math.max(1, range * Math.sin(down));
+    const horizon = Math.acos(Math.min(1, EARTH_RADIUS_M / (EARTH_RADIUS_M + height)));
+    const needed = clamp(horizon - GLOBE_HALF_VIEW + GLOBE_MARGIN, minDown, maxDown);
+    if (down + 1e-3 >= needed) break;
+    down = needed;
+  }
+  return clamp(-down, MIN_PITCH, MAX_PITCH);
+}
+
 function wrapTwist(delta: number): number {
   if (delta > Math.PI) return delta - Math.PI * 2;
   if (delta < -Math.PI) return delta + Math.PI * 2;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { overviewLod } from "../src/cesium/overviewLod";
-import { poseAfterPinch } from "../src/cesium/touchOrbit";
+import { keepGlobeInView, MAX_PITCH, poseAfterPinch } from "../src/cesium/touchOrbit";
+import { decimateRing } from "../src/lib/ringSimplify";
 import { amslFtToEllipsoidM, ukGeoidOffsetM } from "../src/lib/geoid";
 import { feetToMetres, flightLevelToMetres, formatFl } from "../src/lib/units";
 import { classifyAirspace } from "../src/lib/classify";
@@ -24,6 +25,40 @@ describe("overview lod", () => {
     expect(overviewLod(true, 300_000)).toBe(true);
     expect(overviewLod(false, 300_000)).toBe(false);
     expect(overviewLod(true, 280_000)).toBe(false);
+  });
+});
+
+describe("globe pitch", () => {
+  it("keeps a steep regional view", () => {
+    const pitch = (-40 * Math.PI) / 180;
+    expect(keepGlobeInView(180_000, pitch)).toBeCloseTo(pitch, 5);
+  });
+
+  it("pitches down when a long range would look past the horizon", () => {
+    const next = keepGlobeInView(12_000_000, MAX_PITCH);
+    expect(next).toBeLessThan(-0.4);
+  });
+});
+
+describe("ring simplify", () => {
+  it("drops colinear vertices", () => {
+    const ring: [number, number][] = [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [2, 1],
+      [2, 2],
+      [1, 2],
+      [0, 2],
+      [0, 1],
+    ];
+    const out = decimateRing(ring, 0.01, 12);
+    expect(out).toEqual([
+      [0, 0],
+      [2, 0],
+      [2, 2],
+      [0, 2],
+    ]);
   });
 });
 

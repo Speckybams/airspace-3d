@@ -8,7 +8,6 @@ import {
   Ellipsoid,
   EllipsoidTerrainProvider,
   ImageryLayer,
-  OpenStreetMapImageryProvider,
   ScreenSpaceEventHandler,
   ScreenSpaceEventType,
   Math as CesiumMath,
@@ -18,14 +17,16 @@ import { AirspaceLayer, PICK_DRILL_CLICK, PICK_DRILL_HOVER } from "@/cesium/airs
 import {
   BASE_IMAGERY_LAYERS,
   createBasemapLayer,
+  createMapUnderlayLayer,
   createOverviewLayer,
+  globeSeaCssForBasemap,
+  replaceMapUnderlay,
   setIonToken,
-  syncBritainChartOverlay,
 } from "@/cesium/basemaps";
 import { hideIonUpsell } from "@/cesium/credits";
 import { attachOrbitCamera, type OrbitCamera } from "@/cesium/orbitCamera";
-import { OVERVIEW_SEA } from "@/cesium/overviewMap";
-import { applyAirspace3dSky, setSharpGlobe } from "@/cesium/skybox";
+import { scheduleAirspace3dSky, setSharpGlobe } from "@/cesium/skybox";
+import { devError, devWarn } from "@/lib/devLog";
 import { AirportSchematicLayer } from "@/cesium/airportSchematic";
 import { ToolOverlayLayer } from "@/cesium/toolOverlay";
 import { airspacesAtPoint } from "@/lib/airspace-query";
@@ -36,7 +37,9 @@ import { airspaceTypeLabel } from "@/lib/filterRegion";
 import { feetToMetres } from "@/lib/units";
 import { viewRangeMetres } from "@/lib/viewRange";
 import { airspacesForCellIds, fetchAirspaceCell } from "@/lib/worldData";
-import { cellsInView, viewRectangleFromCamera } from "@/lib/worldCells";
+import { cellsInView, sortCellsFrom, viewRectangleFromCamera } from "@/lib/worldCells";
+import { resolveOpeningCamera, saveCameraPose, type SavedCamera } from "@/lib/cameraMemory";
+import { readBootHash } from "@/lib/urlState";
 import type { AirspaceFeature, AirportFeature } from "@/lib/types";
 import { useAppStore } from "@/store/appStore";
 
@@ -48,6 +51,7 @@ interface Props {
     profile: { lengthM: number; samples: ProfileSample[]; bands: ProfileBand[] } | null,
   ) => void;
   onCameraChange?: (lon: number, lat: number, heightM: number, heading: number) => void;
+  onOrbitPose?: (pose: SavedCamera) => void;
 }
 
 export function MapViewer({
@@ -56,6 +60,7 @@ export function MapViewer({
   onLoadedAirspacesChange,
   onSectionProfileChange,
   onCameraChange,
+  onOrbitPose,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetRef = useRef<CesiumWidget | null>(null);
@@ -67,7 +72,12 @@ export function MapViewer({
   const onSectionProfileRef = useRef(onSectionProfileChange);
   const airportsRef = useRef(airports);
   const orbitRef = useRef<OrbitCamera | null>(null);
-  const cellSyncRef = useRef({ busy: false, pending: false, lastMs: 0 });
+  const cellSyncRef = useRef<{ busy: boolean; pending: boolean; lastMs: number; token: object | null }>({
+    busy: false,
+    pending: false,
+    lastMs: 0,
+    token: null,
+  });
   const basemap = useAppStore((s) => s.basemap);
   const categoryVisible = useAppStore((s) => s.categoryVisible);
   const altBandFt = useAppStore((s) => s.altBandFt);
@@ -95,12 +105,12 @@ export function MapViewer({
     let stopCredits: (() => void) | undefined;
     let onKey: ((event: KeyboardEvent) => void) | undefined;
     let unsubTools: (() => void) | undefined;
+    let cancelSky: (() => void) | undefined;
     const token = import.meta.env.VITE_CESIUM_ION_ACCESS_TOKEN ?? "";
     setIonToken(token);
     const setLoad = (value: number | null) => {
       if (!cancelled) useAppStore.getState().setLoadProgress(value);
     };
-    setLoad(0.04);
 
     (async () => {
       try {
@@ -108,6 +118,7 @@ export function MapViewer({
       const widget = new CesiumWidget(containerRef.current, {
         terrainProvider: new EllipsoidTerrainProvider(),
         baseLayer: false,
+        skyBox: false,
         scene3DOnly: true,
         // Overlapping translucent volumes are cheaper without the extra OIT pass.
         orderIndependentTranslucency: false,
@@ -116,59 +127,18 @@ export function MapViewer({
       stopCredits = hideIonUpsell(widget.creditContainer);
       const scene = widget.scene;
       scene.globe.enableLighting = false;
-      scene.globe.baseColor = Color.fromCssColorString(OVERVIEW_SEA);
+      const openingBasemapAtBoot = useAppStore.getState().basemap;
+      scene.globe.baseColor = Color.fromCssColorString(globeSeaCssForBasemap(openingBasemapAtBoot));
       setSharpGlobe(scene);
-      scene.imageryLayers.add(
-        new ImageryLayer(
-          new OpenStreetMapImageryProvider({ url: "https://tile.openstreetmap.org/" }),
-        ),
-      );
+      const underlayId = openingBasemapAtBoot === "dark" ? "dark" : "chart";
+      scene.imageryLayers.add(createMapUnderlayLayer(underlayId));
       const overview = createOverviewLayer();
       scene.imageryLayers.add(overview);
       widget.resize();
-      orbitRef.current = attachOrbitCamera(scene);
+      orbitRef.current = attachOrbitCamera(scene, resolveOpeningCamera(readBootHash()));
       const pending = useAppStore.getState().cameraRequest;
       if (pending) orbitRef.current.flyTo(pending.lon, pending.lat, pending.range);
       scene.requestRender();
-      setLoad(0.16);
-      await new Promise((resolve) => requestAnimationFrame(resolve));
-      if (cancelled) return;
-
-      try {
-        await applyAirspace3dSky(scene);
-      } catch (skyError) {
-        console.warn("Sky setup skipped", skyError);
-      }
-      if (cancelled) return;
-      setLoad(0.28);
-
-      const osKey = import.meta.env.VITE_OS_API_KEY ?? "";
-      const openingBasemap = useAppStore.getState().basemap;
-      const { layer, notice } = await createBasemapLayer(openingBasemap, osKey);
-      if (cancelled) return;
-      const chartReady = waitForTiles(scene, (fraction) => setLoad(0.28 + fraction * 0.3));
-      scene.imageryLayers.add(layer);
-      appliedBasemap.current = openingBasemap;
-      scene.requestRender();
-      let holdNotice = notice ?? null;
-      await chartReady;
-      if (cancelled) return;
-      fadeOutImagery(overview, scene);
-
-      let terrain = widget.terrainProvider;
-      setLoad(0.62);
-      if (token) {
-        try {
-          terrain = await createWorldTerrainAsync();
-          if (cancelled) return;
-          scene.terrainProvider = terrain;
-        } catch (terrainError) {
-          console.warn(terrainError);
-          holdNotice = "Cesium terrain did not load. Check the ion token.";
-        }
-      }
-      if (cancelled) return;
-      setLoad(0.74);
 
       const airLayer = new AirspaceLayer();
       layerRef.current = airLayer;
@@ -190,13 +160,50 @@ export function MapViewer({
       tip.style.display = "none";
       containerRef.current?.append(labelsHost, tip);
       overlayRef.current = { labelsHost, tip };
-      setLoad(0.92);
-      if (cancelled) return;
       airLayer.setSelected(useAppStore.getState().selectedAirspaceId);
-      setSatelliteNotice(holdNotice);
-      setLoad(1);
-      await new Promise((resolve) => window.setTimeout(resolve, 420));
       setLoad(null);
+
+      cancelSky = scheduleAirspace3dSky(scene, () => !cancelled);
+
+      let terrainStarted = false;
+      const maybeTerrain = (heightM: number) => {
+        if (terrainStarted || !token || heightM > 60_000) return;
+        terrainStarted = true;
+        void createWorldTerrainAsync()
+          .then((terrain) => {
+            if (!cancelled) scene.terrainProvider = terrain;
+          })
+          .catch((terrainError) => {
+            devWarn(terrainError);
+            setSatelliteNotice("Cesium terrain did not load. Check the ion token.");
+          });
+      };
+
+      void (async () => {
+        try {
+          const osKey = import.meta.env.VITE_OS_API_KEY ?? "";
+          const openingBasemap = useAppStore.getState().basemap;
+          if (openingBasemap === "chart" || openingBasemap === "dark") {
+            appliedBasemap.current = openingBasemap;
+            scene.requestRender();
+            await waitForTiles(scene, () => {});
+            if (cancelled) return;
+            fadeOutImagery(overview, scene);
+            return;
+          }
+          const { layer, notice } = await createBasemapLayer(openingBasemap, osKey);
+          if (cancelled) return;
+          scene.imageryLayers.add(layer);
+          appliedBasemap.current = openingBasemap;
+          scene.requestRender();
+          await waitForTiles(scene, () => {});
+          if (cancelled) return;
+          fadeOutImagery(overview, scene);
+          setSatelliteNotice(notice ?? null);
+        } catch (basemapError) {
+          devWarn(basemapError);
+        }
+      })();
 
       const handler = new ScreenSpaceEventHandler(scene.canvas);
       handlerRef.current = handler;
@@ -271,24 +278,31 @@ export function MapViewer({
       };
 
       const refreshSectionProfile = () => {
-        const cb = onSectionProfileRef.current;
-        if (!cb) return;
-        const section = useAppStore.getState().mapToolState.section;
-        if (section.length !== 2) {
-          cb(null);
-          return;
-        }
-        const [a, b] = section;
-        cb(
-          buildSectionProfile(
-            airLayer.getLoadedFeatures(),
-            a.lon,
-            a.lat,
-            b.lon,
-            b.lat,
-            (lon, lat) => ToolOverlayLayer.terrainHeight(scene, lon, lat),
-          ),
-        );
+        queueMicrotask(() => {
+          const cb = onSectionProfileRef.current;
+          if (!cb) return;
+          const section = useAppStore.getState().mapToolState.section;
+          if (section.length !== 2) {
+            cb(null);
+            return;
+          }
+          const [a, b] = section;
+          try {
+            cb(
+              buildSectionProfile(
+                airLayer.getLoadedFeatures(),
+                a.lon,
+                a.lat,
+                b.lon,
+                b.lat,
+                (lon, lat) => ToolOverlayLayer.terrainHeight(scene, lon, lat),
+              ),
+            );
+          } catch (profileError) {
+            devError(profileError);
+            cb(null);
+          }
+        });
       };
 
       const syncToolOverlay = () => {
@@ -339,7 +353,6 @@ export function MapViewer({
             if (s.section.length >= 2) return { ...s, section: [ground] };
             return { ...s, section: [...s.section, ground] };
           });
-          syncToolOverlay();
           return;
         }
 
@@ -378,7 +391,16 @@ export function MapViewer({
       }, ScreenSpaceEventType.LEFT_DOUBLE_CLICK);
 
       unsubTools = useAppStore.subscribe((state, previous) => {
-        if (state.tool === previous.tool && state.mapToolState === previous.mapToolState) return;
+        const toolChanged = state.tool !== previous.tool;
+        const ms = state.mapToolState;
+        const pm = previous.mapToolState;
+        const mapToolChanged =
+          ms !== pm ||
+          ms.section !== pm.section ||
+          ms.query !== pm.query ||
+          ms.measure !== pm.measure ||
+          ms.route !== pm.route;
+        if (!toolChanged && !mapToolChanged) return;
         toolOverlay.sync(state.tool, state.mapToolState);
         refreshSectionProfile();
         scene.requestRender();
@@ -442,8 +464,11 @@ export function MapViewer({
       observer = new ResizeObserver(resize);
       observer.observe(containerRef.current!);
 
+      const syncToken = {};
+      cellSyncRef.current.token = syncToken;
       const syncCells = async () => {
         const state = cellSyncRef.current;
+        if (state.token !== syncToken) return;
         if (state.busy) {
           state.pending = true;
           return;
@@ -453,23 +478,30 @@ export function MapViewer({
         const lon = CesiumMath.toDegrees(c.longitude);
         const lat = CesiumMath.toDegrees(c.latitude);
         const height = c.height;
+        airLayer.noteCameraHeight(height);
         const rect = viewRectangleFromCamera(lon, lat, height);
-        const want = new Set(cellsInView(rect.south, rect.west, rect.north, rect.east));
+        const ids = sortCellsFrom(cellsInView(rect.south, rect.west, rect.north, rect.east), lat, lon);
+        const want = new Set(ids);
         for (const id of airLayer.getLoadedCellIds()) {
           if (!want.has(id)) {
             if (airLayer.unloadCell(id)) onPickAirspace(null);
           }
         }
-        for (const id of want) {
+        for (const id of ids) {
           if (airLayer.hasCell(id)) continue;
           try {
             const features = await fetchAirspaceCell(id);
-            if (cancelled) break;
-            await airLayer.loadCell(id, features, widget.terrainProvider);
+            if (cellSyncRef.current.token !== syncToken) return;
+            if (features.length === 0) continue;
+            await airLayer.loadCell(id, features);
+            onLoadedAirspacesChange?.(airspacesForCellIds(airLayer.getLoadedCellIds()));
+            await new Promise((resolve) => requestAnimationFrame(resolve));
           } catch (cellError) {
-            console.warn("Cell load failed", id, cellError);
+            devWarn("Cell load failed", id, cellError);
           }
+          if (cellSyncRef.current.token !== syncToken) return;
         }
+        if (cellSyncRef.current.token !== syncToken) return;
         onLoadedAirspacesChange?.(airspacesForCellIds(airLayer.getLoadedCellIds()));
         refreshSectionProfile();
         state.busy = false;
@@ -485,11 +517,16 @@ export function MapViewer({
         const lat = CesiumMath.toDegrees(c.latitude);
         const height = c.height;
         onCameraChange?.(lon, lat, height, CesiumMath.toDegrees(widget.camera.heading));
-        const chart = scene.imageryLayers.get(scene.imageryLayers.length - 1);
-        if (chart && useAppStore.getState().basemap === "chart") {
-          syncBritainChartOverlay(widget.camera, chart);
+        const pose = orbitRef.current?.getPose();
+        if (pose) {
+          saveCameraPose(pose);
+          onOrbitPose?.(pose);
         }
+        airLayer.noteCameraHeight(height);
         airLayer.updateVisibility(height);
+        const sse = height > 800_000 ? 8 : height > 300_000 ? 4 : height > 80_000 ? 2 : 1.5;
+        if (scene.globe.maximumScreenSpaceError !== sse) scene.globe.maximumScreenSpaceError = sse;
+        maybeTerrain(height);
         const pills = airLayer.layoutLabels(scene);
         if (pills) paintPills(labelsHost, pills, airLayer.getHoveredId());
         schematic.sync(
@@ -508,13 +545,18 @@ export function MapViewer({
       });
       void syncCells();
       } catch (error) {
-        console.error(error);
+        devError(error);
         setSatelliteNotice(error instanceof Error ? error.message : "Map failed to start");
       }
     })();
 
     return () => {
       cancelled = true;
+      cancelSky?.();
+      cancelSky = undefined;
+      cellSyncRef.current.token = null;
+      cellSyncRef.current.busy = false;
+      cellSyncRef.current.pending = false;
       unsubTools?.();
       useAppStore.getState().setLoadProgress(null);
       if (onKey) {
@@ -588,17 +630,29 @@ export function MapViewer({
     if (!widget || appliedBasemap.current === null || appliedBasemap.current === basemap) return;
     let dropped = false;
     (async () => {
-      const layers = widget.scene.imageryLayers;
+      const scene = widget.scene;
+      const layers = scene.imageryLayers;
       while (layers.length > BASE_IMAGERY_LAYERS) {
         layers.remove(layers.get(layers.length - 1), true);
       }
+      const prev = appliedBasemap.current;
+      scene.globe.baseColor = Color.fromCssColorString(globeSeaCssForBasemap(basemap));
+      if (basemap === "chart" || basemap === "dark") {
+        replaceMapUnderlay(scene, basemap);
+        if (dropped) return;
+        appliedBasemap.current = basemap;
+        setSatelliteNotice(null);
+        scene.requestRender();
+        return;
+      }
+      if (prev === "dark") replaceMapUnderlay(scene, "chart");
       const osKey = import.meta.env.VITE_OS_API_KEY ?? "";
-      const { layer, notice } = await createBasemapLayer(basemap, osKey);
+      const { layer, notice } = await createBasemapLayer("satellite", osKey);
       if (dropped) return;
       layers.add(layer);
       appliedBasemap.current = basemap;
       setSatelliteNotice(notice ?? null);
-      widget.scene.requestRender();
+      scene.requestRender();
     })();
     return () => {
       dropped = true;

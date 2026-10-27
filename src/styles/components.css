@@ -173,8 +173,13 @@
   font-size: 11px;
 }
 
-.about-modal .about-brand a {
+.about-modal .about-brand a,
+.about-modal .about-support a {
   color: var(--accent);
+}
+
+.about-modal .about-support {
+  margin: 0 0 12px;
 }
 
 .about-modal .about-lead {
@@ -502,8 +507,240 @@
   }
 }
 
-.runway-guide-modal {
-  max-width: min(720px, 96vw);
+.runway-guide-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  padding:
+    calc(12px + env(safe-area-inset-top))
+    calc(12px + env(safe-area-inset-right))
+    calc(10px + env(safe-area-inset-bottom))
+    calc(12px + env(safe-area-inset-left));
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+.runway-guide-close {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  right: calc(8px + env(safe-area-inset-right));
+  z-index: 210;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(248, 250, 252, 0.45);
+  border-radius: var(--radius);
+  background: rgba(15, 23, 42, 0.85);
+  color: #fff;
+  font-size: 28px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.runway-guide-close:hover {
+  border-color: #fff;
+  background: rgba(30, 41, 59, 0.95);
+}
+
+.runway-guide-header {
+  flex: none;
+  padding-right: 52px;
+  max-width: 960px;
+}
+
+.runway-guide-header h1 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.runway-guide-instructions {
+  margin: 0 0 6px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.runway-guide-panels {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  margin-top: 10px;
+}
+
+.runway-guide-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.runway-guide-panel-title {
+  flex: none;
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.runway-pan-zoom-wrap {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.runway-pan-zoom-toolbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.runway-pan-zoom-reset {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.runway-pan-zoom {
+  flex: 1;
+  min-height: 120px;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  background: #0f172a;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.runway-pan-zoom:active {
+  cursor: grabbing;
+}
+
+.runway-pan-zoom-inner {
+  transform-origin: 0 0;
+  will-change: transform;
+  padding: 24px;
+}
+
+.runway-reference-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: min(100%, 2468px);
+}
+
+.runway-reference-block-title {
+  margin: 0 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.runway-reference-figure svg,
+.runway-reference-inline {
+  display: block;
+  height: auto;
+}
+
+.runway-reference-figure--plan svg {
+  width: min(2468px, 220vw);
+}
+
+.runway-reference-figure--detail svg {
+  width: min(993px, 180vw);
+}
+
+.runway-reference-host--lighting svg.runway-lighting-svg {
+  width: min(6094px, 320vw);
+  min-height: 120px;
+}
+
+.runway-reference-host .runway-light-hit {
+  outline: none;
+}
+
+.runway-reference-host .runway-light-hit:focus-visible {
+  filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.95));
+}
+
+.runway-markings-diagram,
+.runway-lighting-diagram {
+  position: relative;
+}
+
+.runway-light-callout {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  padding: 8px 10px;
+  background: rgba(10, 14, 23, 0.94);
+  border: 1px solid rgba(56, 189, 248, 0.45);
+  border-radius: var(--radius);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.runway-light-callout strong {
+  display: block;
+  margin-bottom: 2px;
+  color: #f8fafc;
+}
+
+.runway-light-hit {
+  cursor: pointer;
+}
+
+.runway-light-hit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.runway-guide-airport-details {
+  flex: none;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  background: rgba(17, 24, 39, 0.6);
+}
+
+.runway-guide-airport-details summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.runway-guide-credit {
+  flex: none;
+  margin: 8px 0 0;
+}
+
+@media (max-height: 640px) {
+  .runway-guide-credit,
+  .runway-guide-airport-details {
+    display: none;
+  }
+
+  .runway-guide-header h1 {
+    font-size: 15px;
+  }
+
+  .runway-guide-instructions {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
 }
 
 .runway-guide-sub {

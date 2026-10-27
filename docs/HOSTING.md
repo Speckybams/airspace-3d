@@ -14,20 +14,20 @@
 
 | Name | Purpose |
 |------|---------|
-| `VITE_CESIUM_ION_ACCESS_TOKEN` | Terrain + optional Bing satellite |
-| `VITE_OS_API_KEY` | Ordnance Survey raster basemaps (Light / Road / Outdoor) |
+| `VITE_CESIUM_ION_ACCESS_TOKEN` | World terrain + satellite imagery (EOX fallback if ion imagery fails) |
+| `VITE_OS_API_KEY` | Optional — retained for a future OS raster route; **CHART/DARK basemaps use OpenStreetMap today** |
 
 Set the same vars for **Production** and **Preview** in Pages → Settings → Environment variables. **Do not commit `.env`** (see `.gitignore`); only `.env.example` belongs in git.
 
 After changing env vars in Cloudflare, **Retry deployment** on the latest build so `VITE_*` values are rebaked.
 
-Restrict **Cesium ion** and **OS Data Hub** keys to `https://voluspace.com` (and `https://www.voluspace.com` if you use www). Details: [DEPLOY.md — Lock map keys](DEPLOY.md#4-lock-map-keys-to-production-url).
+Restrict **Cesium ion** to `https://voluspace.com` (and `https://www.voluspace.com` if you use www). Details: [DEPLOY.md — Lock map keys](DEPLOY.md#4-lock-map-keys-to-production-url).
 
 ## Functions
 
 - [`functions/api/weather/metar.ts`](../functions/api/weather/metar.ts) → `GET /api/weather/metar?ids=EGLL`
 - [`functions/api/weather/taf.ts`](../functions/api/weather/taf.ts) → `GET /api/weather/taf?ids=EGLL`
-- [`functions/api/os/[[path]].ts`](../functions/api/os/[[path]].ts) → `GET /api/os/maps/raster/...` (OS tile proxy; avoids browser CORS to `api.os.uk`)
+- [`functions/api/os/[[path]].ts`](../functions/api/os/[[path]].ts) → `GET /api/os/maps/raster/...` (OS tile proxy; not used by the current basemap — kept for a possible future OS layer)
 - [`public/_routes.json`](../public/_routes.json) limits Functions to `/api/*` so static assets stay free.
 
 ## Headers

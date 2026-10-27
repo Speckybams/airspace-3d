@@ -38,7 +38,8 @@ export function StatusBar({
           <span>CAM {Math.round(metresToFeet(heightM)).toLocaleString()} ft</span>
           <span>HDG {Math.round(heading).toString().padStart(3, "0")}°</span>
           <span className="muted">Data {meta?.builtAt?.slice(0, 10) ?? "—"}</span>
-          <span className="muted">OpenAIP · OS · Cesium · Not for navigation</span>
+          <span className="muted">OpenAIP · OSM · Cesium · Not for navigation</span>
+          <span className="muted">Cells in view · tools use loaded airspace</span>
         </div>
         <nav className="status-bar-legal" aria-label="Legal and about">
           <span className="status-legal-item">
@@ -56,6 +57,14 @@ export function StatusBar({
               </button>
             </span>
           ))}
+          <span className="status-legal-item status-bar-brand">
+            <span className="status-legal-sep" aria-hidden="true">
+              ·
+            </span>
+            <a href="https://volugraph.com/" target="_blank" rel="noopener noreferrer" aria-label="Starling Industries — volugraph.com">
+              <img src="/brand/starling.png" alt="" />
+            </a>
+          </span>
         </nav>
       </footer>
     </>

@@ -13,7 +13,6 @@ import {
   PolylineGeometry,
   Primitive,
   PrimitiveCollection,
-  sampleTerrainMostDetailed,
   Ellipsoid,
   Math as CesiumMath,
   Ray,
@@ -25,6 +24,7 @@ import { altitudeBandActive } from "@/lib/airspace-query";
 import { airspaceListed, airspaceTypeLabel, classFilterApplies, filterRegionFor } from "@/lib/filterRegion";
 import { CATEGORY_STYLES, NA_CLASS_STYLES } from "@/lib/colors";
 import { overviewLod } from "@/cesium/overviewLod";
+import { decimateRing } from "@/lib/ringSimplify";
 import { feetToMetres, flightLevelToMetres } from "@/lib/units";
 import type { AirspaceCategory, AirspaceFeature } from "@/lib/types";
 import { useAppStore } from "@/store/appStore";
@@ -57,8 +57,6 @@ const EARLY_LABEL = new Set([
 const MAX_PILLS = 12;
 /** Solid fill stops here. The outline and the detail panel keep the published ceiling. */
 const FILL_CAP_M = flightLevelToMetres(195);
-/** Far plates follow the earth, but not at the 1° mesh the columns use. */
-const PLATE_GRANULARITY = CesiumMath.toRadians(3.5);
 /** Hover picks stay shallow; clicks drill deeper through stacked translucent fills. */
 export const PICK_DRILL_HOVER = 16;
 export const PICK_DRILL_CLICK = 32;
@@ -106,6 +104,8 @@ interface VolumeBatch {
   edges: Primitive | null;
   plate: Primitive | null;
   plateEdges: Primitive | null;
+  /** Plates are built once, including when a near-view cell later becomes the overview. */
+  platesReady: boolean;
   records: VolumeRecord[];
 }
 
@@ -134,8 +134,8 @@ export class AirspaceLayer {
     flat: true,
   });
   private readonly plateEdgeAppearance = new PolylineColorAppearance({ translucent: true });
-  /** Far from the ground the columns collapse to flat plates. */
-  private overview = true;
+  /** Far from the ground the columns collapse to flat plates. Typical heights stay in 3D. */
+  private overview = false;
   private cameraHeightM = 150_000;
   private hoveredId: string | null = null;
   private selectedId: string | null = null;
@@ -164,36 +164,24 @@ export class AirspaceLayer {
     return this.loadedCells.has(cellId);
   }
 
-  async loadCell(
-    cellId: string,
-    features: AirspaceFeature[],
-    terrainProvider: Parameters<typeof sampleTerrainMostDetailed>[0],
-  ) {
+  /** Call with the live camera height before loading so a far view builds plates only. */
+  noteCameraHeight(heightM: number) {
+    this.cameraHeightM = heightM;
+    this.overview = overviewLod(this.overview, heightM);
+  }
+
+  async loadCell(cellId: string, features: AirspaceFeature[]) {
     if (this.loadedCells.has(cellId)) return;
     this.loadedCells.add(cellId);
-
-    const terrainFeatures = features.filter((f) => f.lowerUsesTerrain);
-    const samplePositions = terrainFeatures.map((f) => {
-      const c = centroid(f.ring);
-      return Cartographic.fromDegrees(c.lon, c.lat);
-    });
-    if (samplePositions.length && terrainProvider) {
-      try {
-        const updated = await sampleTerrainMostDetailed(terrainProvider, samplePositions);
-        terrainFeatures.forEach((f, i) => {
-          this.terrainHeights.set(f.id, updated[i]?.height ?? 0);
-        });
-      } catch {
-        /* ignore */
-      }
+    const step = 220;
+    for (let i = 0; i < features.length; i += step) {
+      const end = Math.min(features.length, i + step);
+      for (let j = i; j < end; j++) this.addFeature(features[j], cellId);
+      this.flushCell(cellId);
+      this.labelsDirty = true;
+      this.updateVisibility(this.cameraHeightM);
+      if (end < features.length) await new Promise((resolve) => setTimeout(resolve, 0));
     }
-
-    for (const f of features) {
-      this.addFeature(f, cellId);
-    }
-    this.flushCell(cellId);
-    this.labelsDirty = true;
-    this.updateVisibility(this.cameraHeightM);
   }
 
   unloadCell(cellId: string): boolean {
@@ -253,10 +241,9 @@ export class AirspaceLayer {
 
   private addFeature(f: AirspaceFeature, cellId: string) {
     const { bottom, top, fillTop } = this.heights(f);
-    const ring = f.ring.slice(0, -1).length === f.ring.length - 1 ? f.ring : f.ring;
-    const flat = ring[0][0] === ring[ring.length - 1][0] ? ring.slice(0, -1) : ring;
-
-    const positions = flat.map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat));
+    const flat = openRing(f.ring);
+    const draw = decimateRing(flat, this.overview ? 0.02 : 0.002, this.overview ? 24 : 36);
+    const positions = draw.map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat));
     const hierarchy = new PolygonHierarchy(positions);
 
     const [lon, lat] = f.ring[0] ?? [0, 0];
@@ -267,64 +254,37 @@ export class AirspaceLayer {
     const fillColor = Color.fromCssColorString(style.fill);
     const outlineColor = Color.fromCssColorString(style.outline);
     const queue = this.queueFor(f.category, cellId);
-    const plateEdgeIds: string[] = [];
     const edgeIds = this.overview
       ? []
-      : this.pushColumn(f, flat, hierarchy, bottom, top, fillTop, fillColor, outlineColor, queue.fills, queue.edges);
+      : this.pushColumn(
+          f,
+          draw,
+          hierarchy,
+          bottom,
+          top,
+          fillTop,
+          fillColor,
+          outlineColor,
+          queue.fills,
+          queue.edges,
+        );
+    const plateEdgeIds = this.overview
+      ? this.pushPlate(f, draw, bottom, fillColor, outlineColor, queue.plates, queue.plateEdges)
+      : [];
 
-    if (!f.thinFill) {
-      let lift = 0;
-      for (let i = 0; i < f.id.length; i++) lift = (lift + f.id.charCodeAt(i)) % 8;
-      const plateHeight = bottom + 120 + lift * 40;
-      const plateFill = Color.clone(fillColor);
-      plateFill.alpha = Math.min(0.45, fillColor.alpha + 0.18);
-      queue.plates.push(
-        new GeometryInstance({
-          geometry: new PolygonGeometry({
-            polygonHierarchy: hierarchy,
-            height: plateHeight,
-            vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
-            arcType: ArcType.GEODESIC,
-            granularity: PLATE_GRANULARITY,
-          }),
-          id: f.id,
-          attributes: {
-            color: ColorGeometryInstanceAttribute.fromColor(plateFill),
-            show: new ShowGeometryInstanceAttribute(true),
-          },
-        }),
-      );
-      const plateId = `${f.id}#p`;
-      plateEdgeIds.push(plateId);
-      const plateRing = flat.map(([pLon, pLat]) => Cartesian3.fromDegrees(pLon, pLat, plateHeight + 30));
-      queue.plateEdges.push(
-        new GeometryInstance({
-          geometry: new PolylineGeometry({
-            positions: [...plateRing, plateRing[0]],
-            width: 2,
-            arcType: ArcType.GEODESIC,
-            granularity: PLATE_GRANULARITY,
-          }),
-          id: plateId,
-          attributes: {
-            color: ColorGeometryInstanceAttribute.fromColor(outlineColor),
-            show: new ShowGeometryInstanceAttribute(true),
-          },
-        }),
-      );
-    }
-
-    const { west, south, east, north } = ringBounds(flat);
+    const { west, south, east, north } = ringBounds(draw);
     const c = centroid(f.ring);
     const edgeEnds: Cartesian3[] = [];
-    const edgeStep = Math.max(1, Math.ceil(flat.length / 32));
-    for (let i = 0; i < flat.length; i += edgeStep) {
-      const [lon1, lat1] = flat[i];
-      const [lon2, lat2] = flat[(i + 1) % flat.length];
-      edgeEnds.push(
-        Cartesian3.fromDegrees(lon1, lat1, top),
-        Cartesian3.fromDegrees(lon2, lat2, top),
-      );
+    if (!this.overview) {
+      const edgeStep = Math.max(1, Math.ceil(draw.length / 16));
+      for (let i = 0; i < draw.length; i += edgeStep) {
+        const [lon1, lat1] = draw[i];
+        const [lon2, lat2] = draw[(i + 1) % draw.length];
+        edgeEnds.push(
+          Cartesian3.fromDegrees(lon1, lat1, top),
+          Cartesian3.fromDegrees(lon2, lat2, top),
+        );
+      }
     }
     const rec: VolumeRecord = {
       cellId,
@@ -422,8 +382,115 @@ export class AirspaceLayer {
       const capLine = flat.map(([pLon, pLat]) => Cartesian3.fromDegrees(pLon, pLat, fillTop));
       pushEdge([...capLine, capLine[0]]);
     }
-    for (let i = 0; i < flat.length; i++) pushEdge([bottomLine[i], topLine[i]]);
+    const stride = Math.max(1, Math.ceil(flat.length / 6));
+    for (let i = 0; i < flat.length; i += stride) pushEdge([bottomLine[i], topLine[i]]);
     return edgeIds;
+  }
+
+  /** Flat footprint used past the 3D threshold. A short ring is enough at that distance. */
+  private pushPlate(
+    f: AirspaceFeature,
+    flat: [number, number][],
+    bottom: number,
+    fillColor: Color,
+    outlineColor: Color,
+    plates: GeometryInstance[],
+    plateEdges: GeometryInstance[],
+  ): string[] {
+    if (flat.length < 3) return [];
+    let lift = 0;
+    for (let i = 0; i < f.id.length; i++) lift = (lift + f.id.charCodeAt(i)) % 8;
+    const plateHeight = bottom + 80 + lift * 25;
+    const plateFill = Color.clone(fillColor);
+    plateFill.alpha = Math.min(0.55, fillColor.alpha + 0.22);
+    plates.push(
+      new GeometryInstance({
+        geometry: new PolygonGeometry({
+          polygonHierarchy: new PolygonHierarchy(flat.map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat))),
+          height: plateHeight,
+          vertexFormat: PerInstanceColorAppearance.VERTEX_FORMAT,
+          arcType: ArcType.RHUMB,
+        }),
+        id: f.id,
+        attributes: {
+          color: ColorGeometryInstanceAttribute.fromColor(plateFill),
+          show: new ShowGeometryInstanceAttribute(true),
+        },
+      }),
+    );
+    const plateId = `${f.id}#p`;
+    const plateRing = flat.map(([pLon, pLat]) => Cartesian3.fromDegrees(pLon, pLat, plateHeight + 20));
+    plateEdges.push(
+      new GeometryInstance({
+        geometry: new PolylineGeometry({
+          positions: [...plateRing, plateRing[0]],
+          width: 1.5,
+          arcType: ArcType.RHUMB,
+        }),
+        id: plateId,
+        attributes: {
+          color: ColorGeometryInstanceAttribute.fromColor(outlineColor),
+          show: new ShowGeometryInstanceAttribute(true),
+        },
+      }),
+    );
+    return [plateId];
+  }
+
+  /** Build the cheap footprints the first time the camera crosses into overview. */
+  private ensurePlates() {
+    for (const batch of this.batches) {
+      if (batch.platesReady) continue;
+      batch.platesReady = true;
+      const plates: GeometryInstance[] = [];
+      const plateEdges: GeometryInstance[] = [];
+      for (const rec of batch.records) {
+        const feature = rec.feature;
+        const [lon, lat] = feature.ring[0] ?? [0, 0];
+        const classStyle = classFilterApplies(filterRegionFor(lat, lon), feature.category, feature.icaoClass)
+          ? NA_CLASS_STYLES[feature.icaoClass]
+          : undefined;
+        const style = classStyle ?? CATEGORY_STYLES[feature.category];
+        const flat = decimateRing(openRing(feature.ring), 0.02, 24);
+        const { bottom } = this.heights(feature);
+        rec.plateEdgeIds = this.pushPlate(
+          feature,
+          flat,
+          bottom,
+          rec.fillColor,
+          Color.fromCssColorString(style.outline),
+          plates,
+          plateEdges,
+        );
+        rec.plateAttrs = null;
+        rec.showPending = true;
+      }
+      if (plates.length === 0) continue;
+      batch.plate = this.collection.add(
+        new Primitive({
+          geometryInstances: plates,
+          appearance: this.plateAppearance,
+          asynchronous: false,
+          cull: true,
+          show: true,
+        }),
+      );
+      batch.plateEdges = this.collection.add(
+        new Primitive({
+          geometryInstances: plateEdges,
+          appearance: this.plateEdgeAppearance,
+          asynchronous: false,
+          cull: true,
+          allowPicking: false,
+          show: true,
+        }),
+      );
+      for (const rec of batch.records) {
+        rec.platePrimitive = batch.plate;
+        rec.plateEdgePrimitive = batch.plateEdges;
+      }
+      this.hasPendingShows = true;
+    }
   }
 
   private ensureColumns() {
@@ -434,7 +501,7 @@ export class AirspaceLayer {
       for (const rec of batch.records) {
         const feature = rec.feature;
         const { bottom, top, fillTop } = this.heights(feature);
-        const ring = openRing(feature.ring);
+        const ring = decimateRing(openRing(feature.ring), 0.002, 36);
         const positions = ring.map(([pLon, pLat]) => Cartesian3.fromDegrees(pLon, pLat));
         const [lon, lat] = feature.ring[0] ?? [0, 0];
         const classStyle = classFilterApplies(filterRegionFor(lat, lon), feature.category, feature.icaoClass)
@@ -529,7 +596,7 @@ export class AirspaceLayer {
             new Primitive({
               geometryInstances: queue.plates,
               appearance: this.plateAppearance,
-              asynchronous: true,
+              asynchronous: false,
               cull: true,
               show: this.overview,
             }),
@@ -541,7 +608,7 @@ export class AirspaceLayer {
             new Primitive({
               geometryInstances: queue.plateEdges,
               appearance: this.plateEdgeAppearance,
-              asynchronous: true,
+              asynchronous: false,
               cull: true,
               allowPicking: false,
               show: this.overview,
@@ -553,7 +620,16 @@ export class AirspaceLayer {
       rec.platePrimitive = plate;
       rec.plateEdgePrimitive = plateEdges;
     }
-    this.batches.push({ cellId, category, fill, edges, plate, plateEdges, records: queue.records });
+    this.batches.push({
+      cellId,
+      category,
+      fill,
+      edges,
+      plate,
+      plateEdges,
+      platesReady: this.overview,
+      records: queue.records,
+    });
     this.queues.set(`${category}|${cellId}`, {
       fills: [],
       edges: [],
@@ -595,7 +671,8 @@ export class AirspaceLayer {
       this.overview = nextOverview;
       this.labelsDirty = true;
     }
-    if (!this.overview) this.ensureColumns();
+    if (this.overview) this.ensurePlates();
+    else this.ensureColumns();
     const { categoryVisible, classVisible, viewRegion, isolateCategory, altBandFt } = useAppStore.getState();
     const visKey = `${this.overview ? "over" : "near"}|${viewRegion}|${isolateCategory ?? ""}|${altBandFt[0]}|${altBandFt[1]}|${categorySignature(categoryVisible)}|${categorySignature(classVisible)}`;
     if (visKey === this.visKey && !this.hasPendingShows) return;
@@ -711,6 +788,12 @@ export class AirspaceLayer {
 
   /** Screen pills for volumes large enough to read. Null when the camera has not moved. */
   layoutLabels(scene: Scene): AirspacePill[] | null {
+    if (this.overview) {
+      this.labelsDirty = false;
+      if (this.activePills.length === 0) return null;
+      this.activePills = [];
+      return [];
+    }
     const camera = scene.camera;
     const position = camera.positionWC;
     const direction = camera.directionWC;

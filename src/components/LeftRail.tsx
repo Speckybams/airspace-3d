@@ -3,12 +3,14 @@ import { createPortal } from "react-dom";
 import { CATEGORY_HINTS, CATEGORY_STYLES, NA_CLASS_HINTS, NA_CLASS_STYLES } from "@/lib/colors";
 import { NA_CLASS_LETTERS, type FilterRegion } from "@/lib/filterRegion";
 import type { AirspaceCategory, BasemapId } from "@/lib/types";
+import { ToolsMenu } from "@/components/TopBar";
 import { useAppStore } from "@/store/appStore";
 
 const HINT_DELAY_MS = 1000;
 
 const BASEMAPS: { id: BasemapId; label: string }[] = [
   { id: "chart", label: "CHART" },
+  { id: "dark", label: "DARK" },
   { id: "satellite", label: "SAT" },
 ];
 
@@ -159,15 +161,27 @@ export function LeftRail() {
       : null;
 
   return (
-    <aside className={filtersOpen ? "left-rail filters-open" : "left-rail"} ref={railRef}>
-      <button
-        type="button"
-        className="rail-toggle"
-        aria-expanded={filtersOpen}
-        onClick={() => setFiltersOpen((open) => !open)}
-      >
-        {filtersOpen ? "Hide filters" : "Filters"}
-      </button>
+    <aside
+      id="left-rail-filters"
+      className={filtersOpen ? "left-rail filters-open" : "left-rail"}
+      ref={railRef}
+    >
+      <div className="left-rail-header">
+        <button
+          type="button"
+          className={filtersOpen ? "rail-toggle active" : "rail-toggle"}
+          aria-expanded={filtersOpen}
+          aria-haspopup="true"
+          aria-controls="left-rail-filters"
+          onClick={() => setFiltersOpen((open) => !open)}
+        >
+          <span className="rail-toggle-inner">
+            <span className="rail-toggle-label">{filtersOpen ? "Hide filters" : "Filters"}</span>
+            <span className="rail-toggle-chevron" aria-hidden="true" />
+          </span>
+        </button>
+        <ToolsMenu placement="rail" />
+      </div>
       <section>
         <h3>Map</h3>
         <div className="btn-group">
@@ -182,6 +196,43 @@ export function LeftRail() {
             </button>
           ))}
         </div>
+      </section>
+      <section>
+        <div className="section-head">
+          <h3>Filters</h3>
+          <button
+            type="button"
+            className="text-btn"
+            onClick={allHidden ? showAllCategories : hideAllCategories}
+          >
+            {allHidden ? "SELECT ALL" : "DESELECT ALL"}
+          </button>
+        </div>
+        <div className="filter-groups">
+          {groups.map((group) => (
+            <div key={group.title} className="filter-group">
+              <h4>{group.title}</h4>
+              <ul className="category-list">
+                {group.rows.map((row) => (
+                  <li key={row.key}>
+                    <label
+                      onMouseEnter={(event) => scheduleHint(row.hint, event.currentTarget)}
+                      onMouseLeave={dismissHint}
+                      onFocus={(event) => scheduleHint(row.hint, event.currentTarget)}
+                      onBlur={dismissHint}
+                    >
+                      <input type="checkbox" checked={row.checked} onChange={row.toggle} />
+                      <span className="swatch" style={{ background: row.swatch }} />
+                      <span className="category-label">{row.label}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section>
         <label className="field">
           <span>ALT SLICE MIN · {altBandFt[0].toLocaleString("en-GB")} FT</span>
           <input
@@ -225,39 +276,6 @@ export function LeftRail() {
           <input type="checkbox" checked={chartTopDown} onChange={(e) => setChartTopDown(e.target.checked)} />
           View chart top-down
         </label>
-      </section>
-      <section>
-        <div className="section-head">
-          <h3>Filters</h3>
-          <button
-            type="button"
-            className="text-btn"
-            onClick={allHidden ? showAllCategories : hideAllCategories}
-          >
-            {allHidden ? "SELECT ALL" : "DESELECT ALL"}
-          </button>
-        </div>
-        {groups.map((group) => (
-          <div key={group.title} className="filter-group">
-            <h4>{group.title}</h4>
-            <ul className="category-list">
-              {group.rows.map((row) => (
-                <li key={row.key}>
-                  <label
-                    onMouseEnter={(event) => scheduleHint(row.hint, event.currentTarget)}
-                    onMouseLeave={dismissHint}
-                    onFocus={(event) => scheduleHint(row.hint, event.currentTarget)}
-                    onBlur={dismissHint}
-                  >
-                    <input type="checkbox" checked={row.checked} onChange={row.toggle} />
-                    <span className="swatch" style={{ background: row.swatch }} />
-                    <span className="category-label">{row.label}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
       </section>
       {hintPopover}
     </aside>

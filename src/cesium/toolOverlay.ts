@@ -2,6 +2,7 @@ import {
   Cartesian3,
   Cartographic,
   Color,
+  Material,
   PointPrimitiveCollection,
   PolylineCollection,
   PrimitiveCollection,
@@ -11,6 +12,10 @@ import type { MapToolState, ToolMode } from "@/lib/types";
 const MARKER = Color.fromCssColorString("#22d3ee");
 const LINE = Color.fromCssColorString("#38bdf8");
 const ROUTE = Color.fromCssColorString("#a78bfa");
+
+function lineMaterial(color: Color): Material {
+  return Material.fromType("Color", { color });
+}
 
 function toPos(lon: number, lat: number, heightM = 4): Cartesian3 {
   return Cartesian3.fromDegrees(lon, lat, heightM);
@@ -29,6 +34,8 @@ export class ToolOverlayLayer {
   sync(tool: ToolMode, state: MapToolState) {
     this.points.removeAll();
     this.lines.removeAll();
+    const lineMat = lineMaterial(LINE);
+    const routeMat = lineMaterial(ROUTE);
 
     if (tool === "query" && state.query) {
       const { lon, lat } = state.query;
@@ -55,7 +62,7 @@ export class ToolOverlayLayer {
       }
       if (state.measure.length >= 2) {
         const positions = state.measure.map((p) => toPos(p.lon, p.lat, 5));
-        this.lines.add({ positions, width: 3, material: LINE });
+        this.lines.add({ positions, width: 3, material: lineMat });
       }
     }
 
@@ -75,7 +82,7 @@ export class ToolOverlayLayer {
         this.lines.add({
           positions: [toPos(a.lon, a.lat, 5), toPos(b.lon, b.lat, 5)],
           width: 4,
-          material: LINE,
+          material: lineMat,
         });
       }
     }
@@ -93,7 +100,7 @@ export class ToolOverlayLayer {
       }
       if (state.route.length >= 2) {
         const positions = state.route.map((p) => toPos(p.lon, p.lat, 5));
-        this.lines.add({ positions, width: 3, material: ROUTE });
+        this.lines.add({ positions, width: 3, material: routeMat });
       }
     }
   }

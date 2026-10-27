@@ -1,3 +1,5 @@
+import { COVERAGE_LABEL } from "@/lib/coverage";
+
 export type LegalDoc = "terms" | "privacy" | "data";
 
 const TITLES: Record<LegalDoc, string> = {
@@ -26,7 +28,7 @@ function TermsBody() {
   return (
     <>
       <p>
-        <strong>Airspace 3D</strong> is provided for education and visual understanding of airspace
+        <strong>3D Airspace Visualiser</strong> (Voluspace) is provided for education and visual understanding of airspace
         structure. It is <strong>not</strong> a flight planning, navigation, or operational tool and
         must not be used as a substitute for official publications, NOTAMs, or air traffic services.
       </p>
@@ -53,7 +55,7 @@ function PrivacyBody() {
       </p>
       <p className="muted">
         When you use the map, your browser loads tiles and terrain from third parties (such as Cesium
-        ion, Ordnance Survey, and fallback basemap providers) under their terms. METAR requests are
+        ion and OpenStreetMap) under their terms. METAR requests are
         proxied through our host to aviationweather.gov. Those services receive standard request data
         (IP address, URL, user-agent) as part of normal web traffic.
       </p>
@@ -68,7 +70,7 @@ function PrivacyBody() {
 function DataBody() {
   return (
     <>
-      <p className="muted">Attribution and licence summary for current UK dataset and basemaps:</p>
+      <p className="muted">Attribution and licence summary for the {COVERAGE_LABEL} dataset and basemaps:</p>
       <ul className="legal-list">
         <li>
           <strong>Airspace &amp; aerodromes:</strong>{" "}
@@ -89,14 +91,14 @@ function DataBody() {
           (Community / plan terms apply).
         </li>
         <li>
-          <strong>OS basemaps:</strong>{" "}
-          <a href="https://osdatahub.os.uk/" target="_blank" rel="noopener noreferrer">
-            Ordnance Survey
+          <strong>Chart &amp; dark basemaps:</strong>{" "}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">
+            OpenStreetMap
           </a>{" "}
-          API — OS terms and Open Government Licence where applicable.
+          (ODbL) and CARTO dark tiles where configured.
         </li>
         <li>
-          <strong>Fallback basemap:</strong> OpenStreetMap (ODbL) / EOX Sentinel-2 where used (CC
+          <strong>Satellite fallback:</strong> EOX Sentinel-2 where Cesium ion imagery is unavailable (CC
           BY-NC-SA — non-commercial).
         </li>
         <li>

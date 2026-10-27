@@ -13,7 +13,16 @@ import {
   ScreenSpaceEventType,
   type Scene,
 } from "cesium";
-import { MAX_PITCH, MAX_RANGE, MIN_PITCH, MIN_RANGE, poseAfterPinch } from "@/cesium/touchOrbit";
+import {
+  keepGlobeInView,
+  MAX_PITCH,
+  MAX_RANGE,
+  MIN_PITCH,
+  MIN_RANGE,
+  poseAfterPinch,
+} from "@/cesium/touchOrbit";
+import type { SavedCamera } from "@/lib/cameraMemory";
+import { LONDON_CAMERA } from "@/lib/cameraMemory";
 // Cesium's wheel delta is positive when the wheel rolls forward. That zooms in.
 const WHEEL_GAIN = 0.00115;
 // Seconds-scale so one notch eases instead of jumping.
@@ -26,19 +35,21 @@ const MAX_PENDING_LOG = 0.85;
 export interface OrbitCamera {
   flyTo: (lon: number, lat: number, range: number) => void;
   setTopDown: (on: boolean) => void;
+  getPose: () => SavedCamera;
   destroy: () => void;
 }
 
 /** Google-Maps-style orbit: tilt and zoom stay locked to a ground point. */
-export function attachOrbitCamera(scene: Scene): OrbitCamera {
+export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCamera {
   const controller = scene.screenSpaceCameraController;
   controller.enableInputs = false;
 
   const canvas = scene.canvas;
-  const anchor = Cartesian3.fromDegrees(-0.4543, 51.47, 0);
-  let heading = 0;
-  let pitch = CesiumMath.toRadians(-40);
-  let range = 180_000;
+  const start = initial ?? LONDON_CAMERA;
+  const anchor = Cartesian3.fromDegrees(start.lon, start.lat, 0);
+  let heading = start.heading;
+  let pitch = CesiumMath.clamp(start.pitch, MIN_PITCH, MAX_PITCH);
+  let range = CesiumMath.clamp(start.range, MIN_RANGE, MAX_RANGE);
   let pitchBeforeTopDown: number | null = null;
 
   const target = new Cartesian3();
@@ -59,12 +70,13 @@ export function attachOrbitCamera(scene: Scene): OrbitCamera {
   let hasWheelFocus = false;
 
   function frame() {
-    const blend = CesiumMath.clamp((range - 2_000_000) / 10_000_000, 0, 1);
-    const eased = blend * blend * (3 - 2 * blend);
-    Cartesian3.lerp(anchor, Cartesian3.ZERO, eased, target);
+    // Stay locked to a ground point, and pitch down as range grows so the
+    // globe cannot slide below the frame into empty sky.
+    pitch = keepGlobeInView(range, pitch);
+    Cartesian3.clone(anchor, target);
     viewOffset.heading = heading;
     viewOffset.pitch = pitch;
-    viewOffset.range = range + eased * Ellipsoid.WGS84.maximumRadius * 0.25;
+    viewOffset.range = range;
     scene.camera.lookAt(target, viewOffset);
     scene.camera.lookAtTransform(Matrix4.IDENTITY);
   }
@@ -254,6 +266,16 @@ export function attachOrbitCamera(scene: Scene): OrbitCamera {
   handler.setInputAction(onPinch, ScreenSpaceEventType.PINCH_MOVE);
 
   return {
+    getPose() {
+      Ellipsoid.WGS84.cartesianToCartographic(anchor, carto);
+      return {
+        lon: CesiumMath.toDegrees(carto.longitude),
+        lat: CesiumMath.toDegrees(carto.latitude),
+        range,
+        heading,
+        pitch,
+      };
+    },
     flyTo(lon: number, lat: number, nextRange: number) {
       stopZoom();
       const token = ++flyToken;

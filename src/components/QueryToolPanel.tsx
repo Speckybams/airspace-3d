@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { airspacesAtPoint } from "@/lib/airspace-query";
 import { airspaceTypeLabel } from "@/lib/filterRegion";
 import type { AirspaceFeature } from "@/lib/types";
@@ -14,6 +15,11 @@ export function QueryToolPanel({
   const queryAltFt = useAppStore((s) => s.queryAltFt);
   const setQueryAltFt = useAppStore((s) => s.setQueryAltFt);
   const query = useAppStore((s) => s.mapToolState.query);
+  const [altInput, setAltInput] = useState(() => String(queryAltFt));
+
+  useEffect(() => {
+    setAltInput(String(queryAltFt));
+  }, [queryAltFt]);
 
   const hits = query
     ? airspacesAtPoint(
@@ -32,16 +38,31 @@ export function QueryToolPanel({
 
   return (
     <div className="tool-panel">
-      <h3>Query</h3>
-      <p className="small muted">Click the map. Uses ground position even when airspace is drawn on top.</p>
-      <label className="field">
-        <span>Altitude (ft AMSL at terrain + value)</span>
+      <h3>Query altitude</h3>
+      <p className="small muted">
+        Click on the map, then enter an altitude. It will tell you what airspace is there.
+      </p>
+      <label className="field field-input-first">
         <input
-          type="number"
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
           className="mono"
-          value={queryAltFt}
-          onChange={(e) => setQueryAltFt(Number(e.target.value))}
+          value={altInput}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (next !== "" && !/^\d+$/.test(next)) return;
+            setAltInput(next);
+            if (next !== "") setQueryAltFt(Number(next));
+          }}
+          onBlur={() => {
+            if (altInput === "") {
+              setAltInput("0");
+              setQueryAltFt(0);
+            }
+          }}
         />
+        <span>Altitude (ft AMSL at terrain + value)</span>
       </label>
       {!query ? (
         <p className="small muted">No query point yet.</p>

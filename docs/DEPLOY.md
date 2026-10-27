@@ -31,11 +31,11 @@ If the domain is registered **with Cloudflare**, skip nameserver changes.
 | Name | Notes |
 |------|--------|
 | `VITE_CESIUM_ION_ACCESS_TOKEN` | From [Cesium ion](https://ion.cesium.com/tokens) |
-| `VITE_OS_API_KEY` | From [OS Data Hub](https://osdatahub.os.uk/) — used at build time; chart tiles are fetched via `/api/os/*` on the live site |
+| `VITE_OS_API_KEY` | Optional — OS Data Hub key for a future OS raster layer; **CHART/DARK use OpenStreetMap** (see [`basemaps.ts`](../src/cesium/basemaps.ts)) |
 | `NODE_VERSION` | `22` |
 
 5. **Save and Deploy**. Open the `*.pages.dev` URL.
-6. Smoke test: `/api/weather/metar?ids=EGLL` should return JSON; chart basemap should load without browser CORS errors to `api.os.uk`.
+6. Smoke test: `/api/weather/metar?ids=EGLL` should return JSON; CHART basemap should load OSM tiles. See [SMOKE.md](SMOKE.md).
 
 If you change env vars later, use **Deployments → Retry deployment** on the latest build (Vite bakes `VITE_*` into the client at build time).
 

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { NA_CLASS_LETTERS, type FilterRegion } from "@/lib/filterRegion";
+import { readBootHash } from "@/lib/urlState";
 import type {
   AirspaceFeature,
   AirportFeature,
@@ -80,8 +81,10 @@ const defaultCategories = [
 
 const categoryVisible = Object.fromEntries(defaultCategories.map((c) => [c, true]));
 
+const bootHash = readBootHash();
+
 export const useAppStore = create<AppState>((set) => ({
-  basemap: "chart",
+  basemap: bootHash.basemap ?? "chart",
   setBasemap: (basemap) => set({ basemap }),
   categoryVisible,
   toggleCategory: (c) =>
@@ -98,21 +101,28 @@ export const useAppStore = create<AppState>((set) => ({
       categoryVisible: Object.fromEntries(Object.keys(s.categoryVisible).map((c) => [c, true])),
       classVisible: Object.fromEntries(Object.keys(s.classVisible).map((c) => [c, true])),
     })),
-  selectedAirspaceId: null,
+  selectedAirspaceId: bootHash.selectedId ?? null,
   setSelectedAirspaceId: (selectedAirspaceId) => set({ selectedAirspaceId }),
   selectedAirspace: null,
   setSelectedAirspace: (selectedAirspace) => set({ selectedAirspace }),
   selectedAirport: null,
   setSelectedAirport: (selectedAirport) => set({ selectedAirport }),
-  tool: "navigate",
+  tool:
+    bootHash.tool && bootHash.tool !== "measure" && bootHash.tool !== "route"
+      ? bootHash.tool
+      : "navigate",
   mapToolState: emptyMapToolState(),
-  setTool: (tool) => set({ tool, mapToolState: emptyMapToolState() }),
+  setTool: (tool) =>
+    set({
+      tool: tool === "measure" || tool === "route" ? "navigate" : tool,
+      mapToolState: emptyMapToolState(),
+    }),
   setMapToolState: (updater) =>
     set((s) => ({
       mapToolState: typeof updater === "function" ? updater(s.mapToolState) : updater,
     })),
   resetMapToolState: () => set({ mapToolState: emptyMapToolState() }),
-  altBandFt: [0, 66000],
+  altBandFt: bootHash.altBandFt ?? [0, 66000],
   setAltBandFt: (altBandFt) => set({ altBandFt }),
   terrainExaggeration: 1,
   setTerrainExaggeration: (terrainExaggeration) => set({ terrainExaggeration }),

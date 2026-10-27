@@ -1,13 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import type { SearchEntry, ToolMode } from "@/lib/types";
 import { useAppStore } from "@/store/appStore";
 
 const TOOLS: { id: ToolMode; label: string }[] = [
   { id: "navigate", label: "NAVIGATE" },
-  { id: "query", label: "QUERY" },
-  { id: "measure", label: "MEASURE" },
+  { id: "query", label: "QUERY ALTITUDE" },
   { id: "crossSection", label: "SECTION" },
-  { id: "route", label: "ROUTE" },
 ];
 
 const RECENT_KEY = "airspace3d-recents";
@@ -120,7 +119,7 @@ export function TopBar({
     <header className="top-bar">
       <div className="brand-cluster">
         <div className="brand-lockup">
-          <img className="brand-wordmark" src="/brand/voluspace.png?v=4" alt="Airspace 3D" />
+          <img className="brand-wordmark" src="/brand/voluspace.png?v=4" alt="Voluspace — 3D Airspace Visualiser" />
           <div className="brand-tag">3D AIRSPACE VISUALISER</div>
         </div>
         <div className="utc-box mono">{utc}</div>
@@ -170,12 +169,14 @@ export function TopBar({
           </ul>
         )}
       </div>
-      <ToolsMenu />
+      <ToolsMenu placement="top" />
       <RunwayGuideButton />
       </div>
       <div className="brand-by">
         <span>BY</span>
-        <img src="/brand/starling.png" alt="Starling Industries" />
+        <a href="https://volugraph.com/" target="_blank" rel="noopener noreferrer" aria-label="Starling Industries — volugraph.com">
+          <img src="/brand/starling.png" alt="" />
+        </a>
       </div>
     </header>
   );
@@ -190,32 +191,97 @@ function RunwayGuideButton() {
   );
 }
 
-function ToolsMenu() {
+export function ToolsMenu({ placement = "top" }: { placement?: "top" | "rail" }) {
   const tool = useAppStore((s) => s.tool);
   const setTool = useAppStore((s) => s.setTool);
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const tabRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelStyle, setPanelStyle] = useState<CSSProperties>({});
   const current = TOOLS.find((item) => item.id === tool) ?? TOOLS[0];
+
+  const layoutPanel = useCallback(() => {
+    const tab = tabRef.current;
+    if (!tab) return;
+    const rect = tab.getBoundingClientRect();
+    setPanelStyle({
+      position: "fixed",
+      top: rect.bottom + 4,
+      right: Math.max(8, window.innerWidth - rect.right),
+      left: "auto",
+      minWidth: 168,
+    });
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    const onPointer = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    layoutPanel();
+    window.addEventListener("resize", layoutPanel);
+    window.addEventListener("scroll", layoutPanel, true);
+    return () => {
+      window.removeEventListener("resize", layoutPanel);
+      window.removeEventListener("scroll", layoutPanel, true);
     };
+  }, [open, layoutPanel]);
+
+  useEffect(() => {
+    if (!open) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
     };
-    window.addEventListener("pointerdown", onPointer);
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const attach = window.setTimeout(() => {
+      window.addEventListener("pointerdown", onPointer, true);
+    }, 0);
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("pointerdown", onPointer);
+      window.clearTimeout(attach);
+      window.removeEventListener("pointerdown", onPointer, true);
       window.removeEventListener("keydown", onKey);
     };
   }, [open]);
 
+  const panel =
+    open &&
+    createPortal(
+      <div
+        ref={panelRef}
+        className="tools-panel tools-panel-floating"
+        role="menu"
+        style={panelStyle}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        {TOOLS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="menuitemradio"
+            aria-checked={tool === item.id}
+            className={tool === item.id ? "btn active" : "btn"}
+            onClick={() => {
+              setTool(item.id);
+              setOpen(false);
+            }}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>,
+      document.body,
+    );
+
   return (
-    <div className="tools-menu" ref={rootRef}>
+    <div
+      className={placement === "rail" ? "tools-menu tools-menu-rail" : "tools-menu tools-menu-top"}
+      ref={rootRef}
+    >
       <button
+        ref={tabRef}
         type="button"
         className={open ? "btn tools-tab active" : "btn tools-tab"}
         aria-expanded={open}
@@ -225,25 +291,7 @@ function ToolsMenu() {
         <span className="tools-kicker">Tools</span>
         <span className="tools-current">{current.label}</span>
       </button>
-      {open && (
-        <div className="tools-panel" role="menu">
-          {TOOLS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="menuitemradio"
-              aria-checked={tool === item.id}
-              className={tool === item.id ? "btn active" : "btn"}
-              onClick={() => {
-                setTool(item.id);
-                setOpen(false);
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-      )}
+      {panel}
     </div>
   );
 }

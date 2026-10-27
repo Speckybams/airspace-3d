@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { COVERAGE_LABEL } from "@/lib/coverage";
 import type { UkDataMeta } from "@/lib/types";
 
 interface Props {
@@ -15,7 +16,7 @@ export function AboutModal({ meta, onClose }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const region = meta?.countryName ?? "United Kingdom";
+  const region = meta?.countryName ?? COVERAGE_LABEL;
   const built = meta?.builtAt?.slice(0, 10) ?? "—";
   const source = meta?.sourceDate?.slice(0, 10) ?? "—";
 
@@ -30,12 +31,16 @@ export function AboutModal({ meta, onClose }: Props) {
       }}
     >
       <div className="modal about-modal">
-        <h2 id="about-title">Airspace 3D</h2>
+        <h2 id="about-title">3D Airspace Visualiser</h2>
         <p className="about-brand muted">
           Voluspace ·{" "}
           <a href="https://voluspace.com/" target="_blank" rel="noopener noreferrer">
             voluspace.com
           </a>
+        </p>
+        <p className="about-support muted">
+          Support:{" "}
+          <a href="mailto:support@volugraph.com">support@volugraph.com</a>
         </p>
         <p className="about-lead">
           3D airspace visualiser for understanding only — not for flight planning, navigation, or drone
@@ -66,7 +71,7 @@ export function AboutModal({ meta, onClose }: Props) {
 
         <h3 className="about-heading">Credits</h3>
         <p className="muted">
-          OpenAIP · Ordnance Survey · OpenStreetMap · Cesium · Starling Industries. See repository{" "}
+          OpenAIP · OpenStreetMap · Cesium · Starling Industries. See repository{" "}
           <code>LICENSING.md</code> for terms.
         </p>
 

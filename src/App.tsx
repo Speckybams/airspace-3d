@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MapViewer } from "@/components/MapViewer";
 import { TopBar } from "@/components/TopBar";
 import { LeftRail } from "@/components/LeftRail";
@@ -20,9 +20,12 @@ import type {
   UkDataMeta,
 } from "@/lib/types";
 import { filterRegionFor } from "@/lib/filterRegion";
-import { fetchAirspaceById } from "@/lib/worldData";
+import { fetchAirspaceById, fetchAirspaceCell, setCellDataRevision } from "@/lib/worldData";
+import { cellIdFor } from "@/lib/worldCells";
+import { hashFragmentForState, replaceUrlHash } from "@/lib/applyAppHash";
+import { resolveOpeningCamera, type SavedCamera } from "@/lib/cameraMemory";
 import { useAppStore } from "@/store/appStore";
-import { decodeAppHash, encodeAppHash } from "@/lib/urlState";
+import { readBootHash } from "@/lib/urlState";
 import { viewRangeMetres } from "@/lib/viewRange";
 
 export function App() {
@@ -30,8 +33,16 @@ export function App() {
   const [airports, setAirports] = useState<AirportFeature[]>([]);
   const [searchIndex, setSearchIndex] = useState<SearchEntry[]>([]);
   const [meta, setMeta] = useState<UkDataMeta | null>(null);
-  const [dataReady, setDataReady] = useState(false);
-  const [status, setStatus] = useState({ lon: -0.45, lat: 51.47, heightM: 180000, heading: 0 });
+  const [dataReady] = useState(true);
+  const opening = resolveOpeningCamera(readBootHash());
+  const orbitPoseRef = useRef<SavedCamera>(opening);
+  const hashDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [status, setStatus] = useState({
+    lon: opening.lon,
+    lat: opening.lat,
+    heightM: 120_000,
+    heading: (opening.heading * 180) / Math.PI,
+  });
   const [sectionProfile, setSectionProfile] = useState<{
     lengthM: number;
     samples: ProfileSample[];
@@ -55,33 +66,53 @@ export function App() {
     name: meta?.countryName ?? "Europe & North America",
   };
 
+  const pushHash = useCallback((pose: SavedCamera) => {
+    const state = useAppStore.getState();
+    replaceUrlHash(
+      hashFragmentForState(
+        {
+          basemap: state.basemap,
+          selectedAirspaceId: state.selectedAirspaceId,
+          altBandFt: state.altBandFt,
+          tool: state.tool,
+        },
+        pose,
+      ),
+    );
+  }, []);
+
   useEffect(() => {
-    Promise.all([
-      fetch("/data/world/airports.json").then((r) => r.json()),
-      fetch("/data/world/search-index.json").then((r) => r.json()),
-      fetch("/data/world/meta.json").then((r) => r.json()),
-    ])
-      .then(([apt, search, m]) => {
-        setAirports(apt);
-        setSearchIndex(search);
+    const pose = resolveOpeningCamera(readBootHash());
+    const homeCell = fetchAirspaceCell(cellIdFor(pose.lat, pose.lon));
+    void fetch("/data/world/meta.json")
+      .then((r) => r.json())
+      .then((m: UkDataMeta) => {
         setMeta(m);
-        setDataReady(true);
-        const hash = decodeAppHash(window.location.hash);
-        if (hash.selectedId) {
-          const entry = (search as SearchEntry[]).find(
-            (x) => x.kind === "airspace" && x.id === hash.selectedId,
-          );
-          if (entry?.cellId) {
-            void fetchAirspaceById(entry.id, entry.cellId).then((sel) => {
-              if (sel) {
-                setSelectedAirspace(sel);
-                setSelectedAirspaceId(sel.id);
-              }
-            });
-          }
-        }
+        if (m.builtAt) setCellDataRevision(m.builtAt);
       })
-      .catch((err) => console.error(err));
+      .catch(() => {});
+    void homeCell.finally(() => {
+      void fetch("/data/world/airports.json")
+        .then((r) => r.json())
+        .then((apt: AirportFeature[]) => setAirports(apt))
+        .catch(() => {});
+      void fetch("/data/world/search-index.json")
+        .then((r) => r.json())
+        .then((search: SearchEntry[]) => {
+          setSearchIndex(search);
+          const selectedId = useAppStore.getState().selectedAirspaceId;
+          if (!selectedId) return;
+          const entry = search.find((x) => x.kind === "airspace" && x.id === selectedId);
+          if (!entry?.cellId) return;
+          void fetchAirspaceById(entry.id, entry.cellId).then((sel) => {
+            if (sel) {
+              setSelectedAirspace(sel);
+              setSelectedAirspaceId(sel.id);
+            }
+          });
+        })
+        .catch(() => {});
+    });
   }, [setSelectedAirspace, setSelectedAirspaceId]);
 
   useEffect(() => {
@@ -98,14 +129,16 @@ export function App() {
       ) {
         return;
       }
-      window.location.hash = encodeAppHash({
-        basemap: state.basemap,
-        selectedId: state.selectedAirspaceId,
-        altBandFt: state.altBandFt,
-        tool: state.tool,
-      });
+      pushHash(orbitPoseRef.current);
     });
-  }, []);
+  }, [pushHash]);
+
+  useEffect(
+    () => () => {
+      if (hashDebounceRef.current) clearTimeout(hashDebounceRef.current);
+    },
+    [],
+  );
 
   const onPick = useCallback(
     (f: AirspaceFeature | null) => {
@@ -168,6 +201,11 @@ export function App() {
                   useAppStore.getState().setViewRegion(region);
                 }
               }}
+              onOrbitPose={(pose) => {
+                orbitPoseRef.current = pose;
+                if (hashDebounceRef.current) clearTimeout(hashDebounceRef.current);
+                hashDebounceRef.current = setTimeout(() => pushHash(pose), 800);
+              }}
             />
           )}
           {loadProgress !== null && (
@@ -186,7 +224,9 @@ export function App() {
           {tool === "query" && <QueryToolPanel airspaces={loadedAirspaces} onSelectAirspace={onPick} />}
           {tool === "measure" && <MeasureToolPanel />}
           {tool === "route" && <RouteToolPanel airspaces={loadedAirspaces} />}
-          {tool === "crossSection" && <CrossSectionPanel profile={sectionProfile} />}
+          {tool === "crossSection" && (
+            <CrossSectionPanel profile={sectionProfile} onProfileClear={() => setSectionProfile(null)} />
+          )}
           {satelliteNotice && <div className="map-notice">{satelliteNotice}</div>}
           <DetailPanel
             airports={airports}

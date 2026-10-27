@@ -78,14 +78,7 @@ function paintFace(face: Face, size: number): HTMLCanvasElement {
       const star = hashDir(dx * invLen, dy * invLen, dz * invLen);
       if (star < dimCut) continue;
       const bright = star >= brightCut ? 235 : 150;
-      if (star >= brightCut) {
-        paintPixel(data, size, x, y, bright);
-        paintPixel(data, size, x + 1, y, bright);
-        paintPixel(data, size, x, y + 1, bright);
-        paintPixel(data, size, x + 1, y + 1, bright);
-      } else {
-        paintPixel(data, size, x, y, bright);
-      }
+      paintPixel(data, size, x, y, bright);
     }
   }
   ctx.putImageData(image, 0, 0);
@@ -95,7 +88,23 @@ function paintFace(face: Face, size: number): HTMLCanvasElement {
 const NEAREST = 9728;
 const CLAMP_TO_EDGE = 33071;
 
-export async function applyAirspace3dSky(scene: Scene): Promise<void> {
+function sceneReady(scene: Scene): boolean {
+  if (typeof scene.isDestroyed === "function" && scene.isDestroyed()) return false;
+  return Boolean(scene.globe);
+}
+
+/** Deferred star field. Call the returned function on map teardown to cancel the timer. */
+export function scheduleAirspace3dSky(scene: Scene, alive: () => boolean, delayMs = 600): () => void {
+  const id = window.setTimeout(() => {
+    if (!alive() || !sceneReady(scene)) return;
+    paintSky(scene);
+  }, delayMs);
+  return () => window.clearTimeout(id);
+}
+
+function paintSky(scene: Scene): void {
+  if (!sceneReady(scene)) return;
+  // 512px faces look like square blocks on the sky; 2048 keeps point stars sharp with NEAREST.
   const size = 2048;
   const sources = Object.fromEntries(FACES.map((face) => [face, paintFace(face, size)])) as Record<
     Face,
@@ -125,16 +134,24 @@ export async function applyAirspace3dSky(scene: Scene): Promise<void> {
     scene.skyAtmosphere.brightnessShift = -1;
     scene.skyAtmosphere.atmosphereLightIntensity = 0;
   }
-  scene.globe.showGroundAtmosphere = false;
-  scene.globe.atmosphereLightIntensity = 0;
-  scene.globe.atmosphereHueShift = 0.08;
-  scene.globe.atmosphereSaturationShift = 0.15;
-  scene.globe.atmosphereBrightnessShift = -1;
+  const globe = scene.globe;
+  globe.showGroundAtmosphere = false;
+  globe.atmosphereLightIntensity = 0;
+  globe.atmosphereHueShift = 0.08;
+  globe.atmosphereSaturationShift = 0.15;
+  globe.atmosphereBrightnessShift = -1;
   if (scene.sun) scene.sun.show = false;
   if (scene.moon) scene.moon.show = false;
+  scene.requestRender();
 }
 
 export function setSharpGlobe(scene: Scene): void {
-  scene.globe.maximumScreenSpaceError = 1.25;
-  scene.globe.tileCacheSize = 800;
+  if (!sceneReady(scene)) return;
+  const globe = scene.globe;
+  globe.maximumScreenSpaceError = 2;
+  globe.tileCacheSize = 1000;
+  globe.preloadAncestors = true;
+  globe.loadingDescendantLimit = 8;
+  scene.fog.enabled = false;
+  scene.fog.density = 0;
 }

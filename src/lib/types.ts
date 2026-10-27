@@ -108,7 +108,7 @@ export interface UkDataMeta {
   countries?: string[];
 }
 
-export type BasemapId = "chart" | "satellite";
+export type BasemapId = "chart" | "dark" | "satellite";
 
 export type ToolMode =
   | "navigate"
