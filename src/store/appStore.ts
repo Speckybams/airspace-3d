@@ -84,7 +84,7 @@ const categoryVisible = Object.fromEntries(defaultCategories.map((c) => [c, true
 const bootHash = readBootHash();
 
 export const useAppStore = create<AppState>((set) => ({
-  basemap: bootHash.basemap ?? "chart",
+  basemap: bootHash.basemap ?? "satellite",
   setBasemap: (basemap) => set({ basemap }),
   categoryVisible,
   toggleCategory: (c) =>
@@ -142,7 +142,7 @@ export const useAppStore = create<AppState>((set) => ({
   setIsolateCategory: (isolateCategory) => set({ isolateCategory }),
   satelliteNotice: null,
   setSatelliteNotice: (satelliteNotice) => set({ satelliteNotice }),
-  loadProgress: null,
+  loadProgress: 0,
   setLoadProgress: (loadProgress) => set({ loadProgress }),
   cameraRequest: null,
   requestCamera: (lon, lat, range) =>

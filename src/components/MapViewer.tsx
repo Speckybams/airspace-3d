@@ -112,9 +112,24 @@ export function MapViewer({
       if (!cancelled) useAppStore.getState().setLoadProgress(value);
     };
 
+    const finishMapBoot = async (scene: Scene, overview: ImageryLayer) => {
+      setLoad(0.08);
+      await waitForTiles(scene, (fraction) => {
+        setLoad(0.08 + fraction * 0.84);
+      });
+      if (cancelled) return;
+      fadeOutImagery(overview, scene);
+      setLoad(1);
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 320));
+      if (cancelled) return;
+      setLoad(null);
+      cancelSky = scheduleAirspace3dSky(scene, () => !cancelled);
+    };
+
     (async () => {
       try {
       if (cancelled || !containerRef.current) return;
+      setLoad(0);
       const widget = new CesiumWidget(containerRef.current, {
         terrainProvider: new EllipsoidTerrainProvider(),
         baseLayer: false,
@@ -126,6 +141,7 @@ export function MapViewer({
       widgetRef.current = widget;
       stopCredits = hideIonUpsell(widget.creditContainer);
       const scene = widget.scene;
+      scene.backgroundColor = Color.fromCssColorString("#0a0e17");
       scene.globe.enableLighting = false;
       const openingBasemapAtBoot = useAppStore.getState().basemap;
       scene.globe.baseColor = Color.fromCssColorString(globeSeaCssForBasemap(openingBasemapAtBoot));
@@ -161,9 +177,7 @@ export function MapViewer({
       containerRef.current?.append(labelsHost, tip);
       overlayRef.current = { labelsHost, tip };
       airLayer.setSelected(useAppStore.getState().selectedAirspaceId);
-      setLoad(null);
-
-      cancelSky = scheduleAirspace3dSky(scene, () => !cancelled);
+      setLoad(0.04);
 
       let terrainStarted = false;
       const maybeTerrain = (heightM: number) => {
@@ -186,22 +200,19 @@ export function MapViewer({
           if (openingBasemap === "chart" || openingBasemap === "dark") {
             appliedBasemap.current = openingBasemap;
             scene.requestRender();
-            await waitForTiles(scene, () => {});
-            if (cancelled) return;
-            fadeOutImagery(overview, scene);
+            await finishMapBoot(scene, overview);
             return;
           }
           const { layer, notice } = await createBasemapLayer(openingBasemap, osKey);
           if (cancelled) return;
           scene.imageryLayers.add(layer);
           appliedBasemap.current = openingBasemap;
-          scene.requestRender();
-          await waitForTiles(scene, () => {});
-          if (cancelled) return;
-          fadeOutImagery(overview, scene);
           setSatelliteNotice(notice ?? null);
+          scene.requestRender();
+          await finishMapBoot(scene, overview);
         } catch (basemapError) {
           devWarn(basemapError);
+          if (!cancelled) setLoad(null);
         }
       })();
 
@@ -524,8 +535,6 @@ export function MapViewer({
         }
         airLayer.noteCameraHeight(height);
         airLayer.updateVisibility(height);
-        const sse = height > 800_000 ? 8 : height > 300_000 ? 4 : height > 80_000 ? 2 : 1.5;
-        if (scene.globe.maximumScreenSpaceError !== sse) scene.globe.maximumScreenSpaceError = sse;
         maybeTerrain(height);
         const pills = airLayer.layoutLabels(scene);
         if (pills) paintPills(labelsHost, pills, airLayer.getHoveredId());
@@ -547,6 +556,7 @@ export function MapViewer({
       } catch (error) {
         devError(error);
         setSatelliteNotice(error instanceof Error ? error.message : "Map failed to start");
+        setLoad(null);
       }
     })();
 

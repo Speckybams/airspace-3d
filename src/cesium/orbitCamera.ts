@@ -69,7 +69,9 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
   const zoomFocus = new Cartesian3();
   let hasWheelFocus = false;
   let pinching = false;
+  let pinchHasPivot = false;
   const pinchPivot = new Cartesian3();
+  const screenCenter = new Cartesian2();
 
   function frame() {
     // Stay locked to a ground point, and pitch down as range grows so the
@@ -231,19 +233,35 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
     queueZoom(typeof delta === "number" ? delta : 0);
   }, ScreenSpaceEventType.WHEEL);
 
+  function flattenAnchorToEllipsoid() {
+    Ellipsoid.WGS84.cartesianToCartographic(anchor, carto);
+    carto.height = 0;
+    Ellipsoid.WGS84.cartographicToCartesian(carto, anchor);
+  }
+
+  function lockAnchorToPinchPivot() {
+    if (!pinchHasPivot) return;
+    Cartesian3.clone(pinchPivot, anchor);
+    flattenAnchorToEllipsoid();
+  }
+
   handler.setInputAction((event: { position1: Cartesian2; position2: Cartesian2 }) => {
     cancelMotion();
     mode = "none";
     holdingGround = false;
     pinching = true;
+    pinchHasPivot = false;
     wheelFocus.x = (event.position1.x + event.position2.x) * 0.5;
     wheelFocus.y = (event.position1.y + event.position2.y) * 0.5;
     hasWheelFocus = true;
-    if (groundUnder(wheelFocus, pinchPivot)) {
+    screenCenter.x = canvas.clientWidth * 0.5;
+    screenCenter.y = canvas.clientHeight * 0.5;
+    const nearTopDown = pitch <= MIN_PITCH + 0.1;
+    const pickAt = nearTopDown ? screenCenter : wheelFocus;
+    if (groundUnder(pickAt, pinchPivot) || groundUnder(wheelFocus, pinchPivot)) {
+      pinchHasPivot = true;
       Cartesian3.clone(pinchPivot, anchor);
-      Ellipsoid.WGS84.cartesianToCartographic(anchor, carto);
-      carto.height = 0;
-      Ellipsoid.WGS84.cartographicToCartesian(carto, anchor);
+      flattenAnchorToEllipsoid();
       Cartesian3.clone(anchor, zoomFocus);
     }
   }, ScreenSpaceEventType.PINCH_START);
@@ -252,6 +270,7 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
     mode = "none";
     holdingGround = false;
     pinching = false;
+    pinchHasPivot = false;
     frame();
     scene.requestRender();
   }, ScreenSpaceEventType.PINCH_END);
@@ -273,12 +292,8 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
       );
       heading = next.heading;
       pitch = next.pitch;
-      const prevRange = range;
       range = next.range;
-      const logZoom = Math.abs(Math.log(range / prevRange));
-      if (logZoom > 0.015) {
-        shiftAnchorForZoom(prevRange, range);
-      }
+      lockAnchorToPinchPivot();
       frame();
       scene.requestRender();
   };

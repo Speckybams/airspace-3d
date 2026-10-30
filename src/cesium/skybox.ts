@@ -148,10 +148,15 @@ function paintSky(scene: Scene): void {
 export function setSharpGlobe(scene: Scene): void {
   if (!sceneReady(scene)) return;
   const globe = scene.globe;
-  globe.maximumScreenSpaceError = 2;
-  globe.tileCacheSize = 1000;
+  // Stay near native tile resolution. A high screen-space error keeps a coarse
+  // tile (huge blurry place names) stretched on screen until a much finer one arrives.
+  globe.maximumScreenSpaceError = 1.5;
+  globe.tileCacheSize = 2000;
   globe.preloadAncestors = true;
-  globe.loadingDescendantLimit = 8;
+  globe.preloadSiblings = true;
+  // Walk one zoom level at a time so the previous tiles stay up until the next
+  // size is ready, instead of holding a far coarser map across the whole zoom.
+  globe.loadingDescendantLimit = 0;
   scene.fog.enabled = false;
   scene.fog.density = 0;
 }

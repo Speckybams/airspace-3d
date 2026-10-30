@@ -62,17 +62,27 @@ function wrapTwist(delta: number): number {
 
 /**
  * Two-finger step: spread zooms in, a downward drag tilts toward overhead,
- * and a twist rotates the heading with the fingers.
+ * and a twist rotates the heading with the fingers. Zoom and twist are
+ * suppressed when the gesture is mostly vertical tilt so the pivot stays put.
  */
 export function poseAfterPinch(pose: OrbitPose, step: PinchStep): OrbitPose {
   let range = pose.range;
-  if (step.prevDist > 1 && step.nextDist > 1) {
-    range = clamp(pose.range * (step.prevDist / step.nextDist), MIN_RANGE, MAX_RANGE);
+  let heading = pose.heading;
+
+  const distRatio = step.prevDist > 1 && step.nextDist > 1 ? step.prevDist / step.nextDist : 1;
+  const distLog = Math.abs(Math.log(distRatio));
+  const tiltRad = Math.abs(step.dHeight) * PINCH_TILT_GAIN;
+  const zoomIntent = distLog > 0.03 && distLog > tiltRad * 0.4;
+  if (zoomIntent) {
+    range = clamp(pose.range * distRatio, MIN_RANGE, MAX_RANGE);
   }
-  return {
-    // Negated so the map rotates with the fingers (Cesium pinch angle is opposite natural twist).
-    heading: pose.heading - wrapTwist(step.dAngle),
-    pitch: clamp(pose.pitch - step.dHeight * PINCH_TILT_GAIN, MIN_PITCH, MAX_PITCH),
-    range,
-  };
+
+  const twist = wrapTwist(step.dAngle);
+  const twistIntent = Math.abs(twist) > 0.003 && Math.abs(twist) > tiltRad * 0.3;
+  if (twistIntent) {
+    heading = pose.heading - twist;
+  }
+
+  const pitch = clamp(pose.pitch - step.dHeight * PINCH_TILT_GAIN, MIN_PITCH, MAX_PITCH);
+  return { heading, pitch, range };
 }

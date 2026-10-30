@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MapViewer } from "@/components/MapViewer";
+import { MapViewerSplash } from "@/components/MapViewerSplash";
 import { TopBar } from "@/components/TopBar";
 import { LeftRail } from "@/components/LeftRail";
 import { DetailPanel } from "@/components/DetailPanel";
@@ -208,18 +209,7 @@ export function App() {
               }}
             />
           )}
-          {loadProgress !== null && (
-            <div
-              className="load-bar"
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(loadProgress * 100)}
-              aria-label="Loading map"
-            >
-              <span style={{ width: `${Math.min(100, loadProgress * 100)}%` }} />
-            </div>
-          )}
+          {loadProgress !== null && <MapViewerSplash progress={loadProgress} />}
           <AltitudeRuler />
           {tool === "query" && <QueryToolPanel airspaces={loadedAirspaces} onSelectAirspace={onPick} />}
           {tool === "measure" && <MeasureToolPanel />}
