@@ -498,10 +498,24 @@ export function MapViewer({
             if (airLayer.unloadCell(id)) onPickAirspace(null);
           }
         }
-        for (const id of ids) {
+        // Build nearest-first, but start the downloads a few cells ahead. Fetching one cell only after
+        // the previous one finished building left the network idle for most of the load.
+        const missing = ids.filter((id) => !airLayer.hasCell(id));
+        const downloads = new Map<string, ReturnType<typeof fetchAirspaceCell>>();
+        const prefetch = (index: number) => {
+          const id = missing[index];
+          if (!id || downloads.has(id)) return;
+          const job = fetchAirspaceCell(id);
+          job.catch(() => undefined);
+          downloads.set(id, job);
+        };
+        for (let i = 0; i < CELL_PREFETCH_AHEAD; i++) prefetch(i);
+        for (let index = 0; index < missing.length; index++) {
+          const id = missing[index];
           if (airLayer.hasCell(id)) continue;
+          prefetch(index + CELL_PREFETCH_AHEAD);
           try {
-            const features = await fetchAirspaceCell(id);
+            const features = await downloads.get(id)!;
             if (cellSyncRef.current.token !== syncToken) return;
             if (features.length === 0) continue;
             await airLayer.loadCell(id, features);
@@ -734,6 +748,9 @@ function fadeOutImagery(layer: ImageryLayer, scene: Scene, ms = 480): void {
   };
   requestAnimationFrame(step);
 }
+
+/** Airspace cells downloaded ahead of the one being built. Enough to hide latency without crowding map tiles. */
+const CELL_PREFETCH_AHEAD = 4;
 
 function waitForTiles(
   scene: Scene,

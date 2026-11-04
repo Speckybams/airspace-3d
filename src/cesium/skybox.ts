@@ -1,4 +1,4 @@
-import { Color, Scene, SkyBox } from "cesium";
+import { Color, RequestScheduler, Scene, SkyBox } from "cesium";
 
 type Face = "positiveX" | "negativeX" | "positiveY" | "negativeY" | "positiveZ" | "negativeZ";
 
@@ -151,9 +151,17 @@ export function setSharpGlobe(scene: Scene): void {
   // Stay near native tile resolution. A high screen-space error keeps a coarse
   // tile (huge blurry place names) stretched on screen until a much finer one arrives.
   globe.maximumScreenSpaceError = 1.5;
-  globe.tileCacheSize = 2000;
+  // Phones and tablets run out of texture memory long before desktops do.
+  const touchDevice = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+  globe.tileCacheSize = touchDevice ? 700 : 2000;
+  // Parent tiles keep the map filled while zooming. Sibling preloading roughly tripled the
+  // requests on every pan for little gain, so it stays off.
   globe.preloadAncestors = true;
-  globe.preloadSiblings = true;
+  globe.preloadSiblings = false;
+  // Cesium only queues the 20 highest-priority tile requests and drops the rest, to ask again
+  // next frame. A wide, tilted view needs far more than that, so raise the queue.
+  // (Real setter, but Cesium's typings omit it because it is marked @private.)
+  (RequestScheduler as unknown as { priorityHeapLength: number }).priorityHeapLength = 80;
   // Walk one zoom level at a time so the previous tiles stay up until the next
   // size is ready, instead of holding a far coarser map across the whole zoom.
   globe.loadingDescendantLimit = 0;

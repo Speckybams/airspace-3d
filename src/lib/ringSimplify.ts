@@ -1,3 +1,44 @@
+interface RingLod {
+  /** Allowed deviation as a fraction of the ring's widest side. */
+  relative: number;
+  /** Absolute floor and ceiling for the deviation, degrees. */
+  floorDeg: number;
+  ceilDeg: number;
+  maxPoints: number;
+}
+
+/**
+ * Close up: keep round zones round. A 0.07% deviation keeps about 55 of 64 spokes on a circle
+ * and still thins long straight borders. The data pack never carries more than 64 vertices.
+ */
+const NEAR_LOD: RingLod = { relative: 0.0007, floorDeg: 0.00002, ceilDeg: 0.0015, maxPoints: 64 };
+/** Flat plates seen from very high up: cheap to build, since these are made on the main thread. */
+const OVERVIEW_LOD: RingLod = { relative: 0.006, floorDeg: 0.002, ceilDeg: 0.02, maxPoints: 32 };
+
+function ringSpanDeg(ring: [number, number][]): number {
+  let west = Infinity;
+  let east = -Infinity;
+  let south = Infinity;
+  let north = -Infinity;
+  for (const [lon, lat] of ring) {
+    if (lon < west) west = lon;
+    if (lon > east) east = lon;
+    if (lat < south) south = lat;
+    if (lat > north) north = lat;
+  }
+  return Math.max(east - west, north - south);
+}
+
+/**
+ * Ring to draw. The tolerance scales with the zone's own size, so a small circular ATZ keeps
+ * its spokes while a large irregular TMA is still thinned.
+ */
+export function decimateForDisplay(ring: [number, number][], overview: boolean): [number, number][] {
+  const lod = overview ? OVERVIEW_LOD : NEAR_LOD;
+  const tolerance = Math.min(lod.ceilDeg, Math.max(lod.floorDeg, ringSpanDeg(ring) * lod.relative));
+  return decimateRing(ring, tolerance, lod.maxPoints);
+}
+
 /** Drop ring vertices that sit within `toleranceDeg` of a chord, then tighten until `maxPoints`. */
 export function decimateRing(
   ring: [number, number][],

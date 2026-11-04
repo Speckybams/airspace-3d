@@ -24,7 +24,7 @@ import { altitudeBandActive } from "@/lib/airspace-query";
 import { airspaceListed, airspaceTypeLabel, classFilterApplies, filterRegionFor } from "@/lib/filterRegion";
 import { CATEGORY_STYLES, NA_CLASS_STYLES } from "@/lib/colors";
 import { overviewLod } from "@/cesium/overviewLod";
-import { decimateRing } from "@/lib/ringSimplify";
+import { decimateForDisplay } from "@/lib/ringSimplify";
 import { feetToMetres, flightLevelToMetres } from "@/lib/units";
 import type { AirspaceCategory, AirspaceFeature } from "@/lib/types";
 import { useAppStore } from "@/store/appStore";
@@ -242,7 +242,7 @@ export class AirspaceLayer {
   private addFeature(f: AirspaceFeature, cellId: string) {
     const { bottom, top, fillTop } = this.heights(f);
     const flat = openRing(f.ring);
-    const draw = decimateRing(flat, this.overview ? 0.02 : 0.002, this.overview ? 24 : 36);
+    const draw = decimateForDisplay(flat, this.overview);
     const positions = draw.map(([lon, lat]) => Cartesian3.fromDegrees(lon, lat));
     const hierarchy = new PolygonHierarchy(positions);
 
@@ -451,7 +451,7 @@ export class AirspaceLayer {
           ? NA_CLASS_STYLES[feature.icaoClass]
           : undefined;
         const style = classStyle ?? CATEGORY_STYLES[feature.category];
-        const flat = decimateRing(openRing(feature.ring), 0.02, 24);
+        const flat = decimateForDisplay(openRing(feature.ring), true);
         const { bottom } = this.heights(feature);
         rec.plateEdgeIds = this.pushPlate(
           feature,
@@ -501,7 +501,7 @@ export class AirspaceLayer {
       for (const rec of batch.records) {
         const feature = rec.feature;
         const { bottom, top, fillTop } = this.heights(feature);
-        const ring = decimateRing(openRing(feature.ring), 0.002, 36);
+        const ring = decimateForDisplay(openRing(feature.ring), false);
         const positions = ring.map(([pLon, pLat]) => Cartesian3.fromDegrees(pLon, pLat));
         const [lon, lat] = feature.ring[0] ?? [0, 0];
         const classStyle = classFilterApplies(filterRegionFor(lat, lon), feature.category, feature.icaoClass)
