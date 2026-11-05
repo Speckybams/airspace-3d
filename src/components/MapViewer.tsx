@@ -25,7 +25,7 @@ import {
 } from "@/cesium/basemaps";
 import { hideIonUpsell } from "@/cesium/credits";
 import { attachOrbitCamera, type OrbitCamera } from "@/cesium/orbitCamera";
-import { scheduleAirspace3dSky, setSharpGlobe } from "@/cesium/skybox";
+import { globeResolutionScale, scheduleAirspace3dSky, setSharpGlobe } from "@/cesium/skybox";
 import { devError, devWarn } from "@/lib/devLog";
 import { AirportSchematicLayer } from "@/cesium/airportSchematic";
 import { ToolOverlayLayer } from "@/cesium/toolOverlay";
@@ -106,6 +106,7 @@ export function MapViewer({
     let onKey: ((event: KeyboardEvent) => void) | undefined;
     let unsubTools: (() => void) | undefined;
     let cancelSky: (() => void) | undefined;
+    let stopResolution: (() => void) | undefined;
     const token = import.meta.env.VITE_CESIUM_ION_ACCESS_TOKEN ?? "";
     setIonToken(token);
     const setLoad = (value: number | null) => {
@@ -137,8 +138,19 @@ export function MapViewer({
         scene3DOnly: true,
         // Overlapping translucent volumes are cheaper without the extra OIT pass.
         orderIndependentTranslucency: false,
+        // Default renders at 1× and lets the browser upscale, which softens the chart.
+        useBrowserRecommendedResolution: false,
       });
       widgetRef.current = widget;
+      let lastPixelRatio = 0;
+      const applyResolution = () => {
+        const dpr = window.devicePixelRatio || 1;
+        if (dpr === lastPixelRatio) return;
+        lastPixelRatio = dpr;
+        widget.resolutionScale = globeResolutionScale(dpr);
+      };
+      applyResolution();
+      stopResolution = widget.scene.preRender.addEventListener(applyResolution);
       stopCredits = hideIonUpsell(widget.creditContainer);
       const scene = widget.scene;
       scene.backgroundColor = Color.fromCssColorString("#0a0e17");
@@ -576,6 +588,7 @@ export function MapViewer({
 
     return () => {
       cancelled = true;
+      stopResolution?.();
       cancelSky?.();
       cancelSky = undefined;
       cellSyncRef.current.token = null;

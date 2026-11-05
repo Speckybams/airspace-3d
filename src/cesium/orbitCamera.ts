@@ -14,11 +14,15 @@ import {
   type Scene,
 } from "cesium";
 import {
+  clampPinchRatio,
   keepGlobeInView,
   MAX_PITCH,
   MAX_RANGE,
   MIN_PITCH,
   MIN_RANGE,
+  panSampleScale,
+  PINCH_HEIGHT_FROM_PIXELS,
+  pinchTwist,
   poseAfterPinch,
 } from "@/cesium/touchOrbit";
 import type { SavedCamera } from "@/lib/cameraMemory";
@@ -69,9 +73,12 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
   const zoomFocus = new Cartesian3();
   let hasWheelFocus = false;
   let pinching = false;
-  let pinchHasPivot = false;
-  const pinchPivot = new Cartesian3();
-  const screenCenter = new Cartesian2();
+  const scratchRay = new Ray();
+  const scratchScreen = new Cartesian2();
+  const touches = new Map<number, { x: number; y: number }>();
+  let touchGesture: "none" | "pan" | "pinch" = "none";
+  let mode: "none" | "orbit" | "pan" = "none";
+  const pinchLast = { dist: 0, angle: 0, midY: 0 };
 
   function frame() {
     // Stay locked to a ground point, and pitch down as range grows so the
@@ -89,7 +96,7 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
   }
 
   function groundUnder(screen: Cartesian2, result: Cartesian3): boolean {
-    const ray = scene.camera.getPickRay(screen, new Ray());
+    const ray = scene.camera.getPickRay(screen, scratchRay);
     if (!ray) return false;
     const hit = IntersectionTests.rayEllipsoid(ray, Ellipsoid.WGS84);
     if (!hit) return false;
@@ -170,28 +177,175 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
     holdingGround = groundUnder(screen, grab);
   }
 
-  /** Keep the grabbed ground point under the cursor. */
+  /** Keep the grabbed ground point under the cursor. Grazing rays are dropped so the map cannot jump. */
   function panTo(screen: Cartesian2) {
     if (!holdingGround) return;
-    const ray = scene.camera.getPickRay(screen, new Ray());
+    const ray = scene.camera.getPickRay(screen, scratchRay);
     if (!ray) return;
     Ellipsoid.WGS84.geodeticSurfaceNormal(grab, grabNormal);
     Plane.fromPointNormal(grab, grabNormal, grabPlane);
     if (!IntersectionTests.rayPlane(ray, grabPlane, planeHit)) return;
+    const along = Cartesian3.distance(ray.origin, planeHit);
     Cartesian3.subtract(grab, planeHit, panDelta);
+    const scale = panSampleScale(along, Cartesian3.magnitude(panDelta), range);
+    if (scale === 0) return;
+    if (scale < 1) Cartesian3.multiplyByScalar(panDelta, scale, panDelta);
     Cartesian3.add(anchor, panDelta, anchor);
-    Ellipsoid.WGS84.cartesianToCartographic(anchor, carto);
-    carto.height = 0;
-    Ellipsoid.WGS84.cartographicToCartesian(carto, anchor);
+    flattenAnchorToEllipsoid();
   }
+
+  function screenOf(point: { x: number; y: number }): Cartesian2 {
+    scratchScreen.x = point.x;
+    scratchScreen.y = point.y;
+    return scratchScreen;
+  }
+
+  function canvasPoint(event: PointerEvent, into: { x: number; y: number }) {
+    const rect = canvas.getBoundingClientRect();
+    into.x = event.clientX - rect.left;
+    into.y = event.clientY - rect.top;
+  }
+
+  function touchPair(): [{ x: number; y: number }, { x: number; y: number }] | null {
+    const it = touches.values();
+    const a = it.next().value as { x: number; y: number } | undefined;
+    const b = it.next().value as { x: number; y: number } | undefined;
+    if (!a || !b) return null;
+    return [a, b];
+  }
+
+  /** Baseline for the next pinch frame. Does not move the camera. */
+  function rememberPinch() {
+    const pair = touchPair();
+    if (!pair) return;
+    const [a, b] = pair;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    pinchLast.dist = Math.hypot(dx, dy);
+    pinchLast.angle = Math.atan2(dy, dx);
+    pinchLast.midY = (a.y + b.y) * 0.5;
+    wheelFocus.x = (a.x + b.x) * 0.5;
+    wheelFocus.y = pinchLast.midY;
+    hasWheelFocus = true;
+  }
+
+  function applyPinch() {
+    const pair = touchPair();
+    if (!pair) return;
+    const [a, b] = pair;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dist = Math.hypot(dx, dy);
+    const angle = Math.atan2(dy, dx);
+    const midY = (a.y + b.y) * 0.5;
+    wheelFocus.x = (a.x + b.x) * 0.5;
+    wheelFocus.y = midY;
+    hasWheelFocus = true;
+
+    let prevDist = pinchLast.dist;
+    let nextDist = dist;
+    if (prevDist > 1 && nextDist > 1) nextDist = prevDist / clampPinchRatio(prevDist / nextDist);
+    const prevRange = range;
+    const next = poseAfterPinch(
+      { heading, pitch, range },
+      {
+        prevDist,
+        nextDist,
+        dAngle: pinchTwist(angle - pinchLast.angle),
+        dHeight: (midY - pinchLast.midY) * PINCH_HEIGHT_FROM_PIXELS,
+      },
+    );
+    heading = next.heading;
+    pitch = next.pitch;
+    range = next.range;
+    // Zoom toward the fingers. The anchor is not retargeted, so a tilt stays on the same ground point.
+    if (range !== prevRange) shiftAnchorForZoom(prevRange, range);
+    pinchLast.dist = dist;
+    pinchLast.angle = angle;
+    pinchLast.midY = midY;
+    frame();
+    scene.requestRender();
+  }
+
+  function finishTouch(event: PointerEvent) {
+    touches.delete(event.pointerId);
+    if (touches.size === 0) {
+      touchGesture = "none";
+      pinching = false;
+      holdingGround = false;
+      mode = "none";
+      frame();
+      scene.requestRender();
+      return;
+    }
+    if (touches.size === 1) {
+      // The finger that remains starts a pan where it already is. The camera does not move.
+      touchGesture = "pan";
+      pinching = false;
+      const only = touches.values().next().value as { x: number; y: number } | undefined;
+      if (only) beginPan(screenOf(only));
+      return;
+    }
+    if (touchGesture === "pinch") rememberPinch();
+  }
+
+  function onTouchPointerDown(event: PointerEvent) {
+    if (event.pointerType !== "touch") return;
+    const point = { x: 0, y: 0 };
+    canvasPoint(event, point);
+    touches.set(event.pointerId, point);
+    if (touches.size > 2) return;
+    cancelMotion();
+    mode = "none";
+    if (touches.size === 1) {
+      touchGesture = "pan";
+      pinching = false;
+      beginPan(screenOf(point));
+      return;
+    }
+    touchGesture = "pinch";
+    holdingGround = false;
+    pinching = true;
+    rememberPinch();
+  }
+
+  function onTouchPointerMove(event: PointerEvent) {
+    if (event.pointerType !== "touch") return;
+    const point = touches.get(event.pointerId);
+    if (!point) return;
+    canvasPoint(event, point);
+    if (touchGesture === "pan" && touches.size === 1) {
+      panTo(screenOf(point));
+      frame();
+      scene.requestRender();
+      return;
+    }
+    if (touchGesture === "pinch" && touches.size >= 2) applyPinch();
+  }
+
+  function onTouchPointerUp(event: PointerEvent) {
+    if (event.pointerType !== "touch") return;
+    finishTouch(event);
+  }
+
+  function blockBrowserTouch(event: TouchEvent) {
+    if (event.cancelable) event.preventDefault();
+  }
+
+  canvas.addEventListener("pointerdown", onTouchPointerDown);
+  canvas.addEventListener("pointermove", onTouchPointerMove);
+  canvas.addEventListener("pointerup", onTouchPointerUp);
+  canvas.addEventListener("pointercancel", onTouchPointerUp);
+  // touchmove only. preventDefault on touchstart would swallow the tap that selects airspace.
+  canvas.addEventListener("touchmove", blockBrowserTouch, { passive: false });
 
   frame();
 
   const handler = new ScreenSpaceEventHandler(canvas);
-  let mode: "none" | "orbit" | "pan" = "none";
   const last = new Cartesian2();
 
   handler.setInputAction((event: { position: Cartesian2 }) => {
+    if (touches.size > 0) return;
     cancelMotion();
     mode = "pan";
     Cartesian2.clone(event.position, last);
@@ -199,12 +353,14 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
   }, ScreenSpaceEventType.LEFT_DOWN);
 
   handler.setInputAction((event: { position: Cartesian2 }) => {
+    if (touches.size > 0) return;
     cancelMotion();
     mode = "orbit";
     Cartesian2.clone(event.position, last);
   }, ScreenSpaceEventType.RIGHT_DOWN);
 
   handler.setInputAction(() => {
+    if (touches.size > 0) return;
     mode = "none";
     holdingGround = false;
   }, ScreenSpaceEventType.LEFT_UP);
@@ -213,6 +369,7 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
   }, ScreenSpaceEventType.RIGHT_UP);
 
   handler.setInputAction((event: { endPosition: Cartesian2 }) => {
+    if (touches.size > 0) return;
     Cartesian2.clone(event.endPosition, wheelFocus);
     hasWheelFocus = true;
     if (mode === "none") return;
@@ -238,66 +395,6 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
     carto.height = 0;
     Ellipsoid.WGS84.cartographicToCartesian(carto, anchor);
   }
-
-  function lockAnchorToPinchPivot() {
-    if (!pinchHasPivot) return;
-    Cartesian3.clone(pinchPivot, anchor);
-    flattenAnchorToEllipsoid();
-  }
-
-  handler.setInputAction((event: { position1: Cartesian2; position2: Cartesian2 }) => {
-    cancelMotion();
-    mode = "none";
-    holdingGround = false;
-    pinching = true;
-    pinchHasPivot = false;
-    wheelFocus.x = (event.position1.x + event.position2.x) * 0.5;
-    wheelFocus.y = (event.position1.y + event.position2.y) * 0.5;
-    hasWheelFocus = true;
-    screenCenter.x = canvas.clientWidth * 0.5;
-    screenCenter.y = canvas.clientHeight * 0.5;
-    const nearTopDown = pitch <= MIN_PITCH + 0.1;
-    const pickAt = nearTopDown ? screenCenter : wheelFocus;
-    if (groundUnder(pickAt, pinchPivot) || groundUnder(wheelFocus, pinchPivot)) {
-      pinchHasPivot = true;
-      Cartesian3.clone(pinchPivot, anchor);
-      flattenAnchorToEllipsoid();
-      Cartesian3.clone(anchor, zoomFocus);
-    }
-  }, ScreenSpaceEventType.PINCH_START);
-
-  handler.setInputAction(() => {
-    mode = "none";
-    holdingGround = false;
-    pinching = false;
-    pinchHasPivot = false;
-    frame();
-    scene.requestRender();
-  }, ScreenSpaceEventType.PINCH_END);
-
-  const onPinch: ScreenSpaceEventHandler.TwoPointMotionEventCallback = (event) => {
-      const pinch = event as unknown as {
-        distance: { startPosition: Cartesian2; endPosition: Cartesian2 };
-        angleAndHeight: { startPosition: Cartesian2; endPosition: Cartesian2 };
-      };
-      cancelMotion();
-      const next = poseAfterPinch(
-        { heading, pitch, range },
-        {
-          prevDist: pinch.distance.startPosition.y,
-          nextDist: pinch.distance.endPosition.y,
-          dAngle: pinch.angleAndHeight.endPosition.x - pinch.angleAndHeight.startPosition.x,
-          dHeight: pinch.angleAndHeight.endPosition.y - pinch.angleAndHeight.startPosition.y,
-        },
-      );
-      heading = next.heading;
-      pitch = next.pitch;
-      range = next.range;
-      lockAnchorToPinchPivot();
-      frame();
-      scene.requestRender();
-  };
-  handler.setInputAction(onPinch, ScreenSpaceEventType.PINCH_MOVE);
 
   return {
     getPose() {
@@ -347,6 +444,11 @@ export function attachOrbitCamera(scene: Scene, initial?: SavedCamera): OrbitCam
     destroy() {
       flyToken += 1;
       stopZoom();
+      canvas.removeEventListener("pointerdown", onTouchPointerDown);
+      canvas.removeEventListener("pointermove", onTouchPointerMove);
+      canvas.removeEventListener("pointerup", onTouchPointerUp);
+      canvas.removeEventListener("pointercancel", onTouchPointerUp);
+      canvas.removeEventListener("touchmove", blockBrowserTouch);
       handler.destroy();
       controller.enableInputs = true;
     },

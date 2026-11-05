@@ -145,12 +145,26 @@ function paintSky(scene: Scene): void {
   scene.requestRender();
 }
 
+/**
+ * Multiplier on top of devicePixelRatio. The widget is created with
+ * useBrowserRecommendedResolution off, so the real scale is dpr times this.
+ * Capped at 2× so a 3× phone does not fill nine times the pixels.
+ */
+export function globeResolutionScale(devicePixelRatio: number): number {
+  const dpr = devicePixelRatio > 0 && Number.isFinite(devicePixelRatio) ? devicePixelRatio : 1;
+  return Math.min(1, 2 / dpr);
+}
+
 export function setSharpGlobe(scene: Scene): void {
   if (!sceneReady(scene)) return;
   const globe = scene.globe;
   // Stay near native tile resolution. A high screen-space error keeps a coarse
   // tile (huge blurry place names) stretched on screen until a much finer one arrives.
-  globe.maximumScreenSpaceError = 1.5;
+  // Screen-space error is in CSS pixels. 1 keeps street labels near their own
+  // pixel size. The widget renders at device pixels (capped at 2×), so this
+  // is about two physical pixels on a retina screen — sharp, without an extra
+  // full zoom level of tiles.
+  globe.maximumScreenSpaceError = 1;
   // Phones and tablets run out of texture memory long before desktops do.
   const touchDevice = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
   globe.tileCacheSize = touchDevice ? 700 : 2000;

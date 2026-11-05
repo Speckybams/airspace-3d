@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { overviewLod } from "../src/cesium/overviewLod";
-import { keepGlobeInView, MAX_PITCH, poseAfterPinch } from "../src/cesium/touchOrbit";
+import {
+  clampPinchRatio,
+  keepGlobeInView,
+  MAX_PITCH,
+  panSampleScale,
+  pinchTwist,
+  poseAfterPinch,
+} from "../src/cesium/touchOrbit";
+import { globeResolutionScale } from "../src/cesium/skybox";
 import { decimateRing } from "../src/lib/ringSimplify";
 import { amslFtToEllipsoidM, ukGeoidOffsetM } from "../src/lib/geoid";
 import { feetToMetres, flightLevelToMetres, formatFl } from "../src/lib/units";
@@ -82,6 +90,30 @@ describe("touch orbit", () => {
     const next = poseAfterPinch(pose, { prevDist: 10, nextDist: 10, dAngle: Math.PI + 0.2, dHeight: 0 });
     expect(next.heading).toBeCloseTo(Math.PI - 0.2, 5);
     expect(next.range).toBe(pose.range);
+  });
+
+  it("drops a pan sample whose ray skims the ground", () => {
+    expect(panSampleScale(80_000, 100, 10_000)).toBe(0);
+    expect(panSampleScale(1_000, 100, 10_000)).toBe(1);
+  });
+
+  it("shortens a pan step that would cross a large part of the view", () => {
+    expect(panSampleScale(1_000, 8_000, 10_000)).toBeCloseTo(4_500 / 8_000, 5);
+  });
+
+  it("limits one pinch frame and ignores a finger-swap twist", () => {
+    expect(clampPinchRatio(4)).toBeCloseTo(1.18, 5);
+    expect(clampPinchRatio(0.1)).toBeCloseTo(0.85, 5);
+    expect(pinchTwist(Math.PI)).toBe(0);
+    expect(pinchTwist(0.2)).toBeCloseTo(0.2, 5);
+  });
+});
+
+describe("map resolution", () => {
+  it("renders at the screen's pixels, capped at 2×", () => {
+    expect(globeResolutionScale(1)).toBe(1);
+    expect(globeResolutionScale(2)).toBe(1);
+    expect(globeResolutionScale(3)).toBeCloseTo(2 / 3, 5);
   });
 });
 

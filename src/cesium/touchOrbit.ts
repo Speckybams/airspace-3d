@@ -30,6 +30,43 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Cesium's pinch "height" is the vertical midpoint delta, in CSS pixels, times this. */
+export const PINCH_HEIGHT_FROM_PIXELS = 0.25;
+
+const PAN_RAY_LIMIT = 6;
+const PAN_SHIFT_LIMIT = 0.45;
+
+/**
+ * Scale for one pan sample. A ray that skims the ground reports a hit far past
+ * the finger and would throw the map, so that sample is dropped. A merely
+ * large shift is shortened instead of applied in full.
+ */
+export function panSampleScale(alongRay: number, shift: number, range: number): number {
+  if (!(range > 0) || !Number.isFinite(alongRay) || !Number.isFinite(shift) || shift < 0) return 0;
+  if (alongRay > range * PAN_RAY_LIMIT) return 0;
+  const cap = range * PAN_SHIFT_LIMIT;
+  if (shift <= cap) return 1;
+  return cap / shift;
+}
+
+/** Per-frame pinch zoom ratio. One bad sample cannot throw the camera. */
+export function clampPinchRatio(ratio: number): number {
+  if (!Number.isFinite(ratio) || ratio <= 0) return 1;
+  return Math.min(1.18, Math.max(0.85, ratio));
+}
+
+/**
+ * Twist for one pinch frame. A step near half a turn is the two fingers swapping
+ * order in the event, not a real twist, so it is ignored.
+ */
+export function pinchTwist(delta: number): number {
+  let twist = delta;
+  if (twist > Math.PI) twist -= Math.PI * 2;
+  if (twist < -Math.PI) twist += Math.PI * 2;
+  if (Math.abs(twist) > 2.5) return 0;
+  return twist;
+}
+
 const EARTH_RADIUS_M = 6_378_137;
 /** Radians of the frame below the view centre that can still see the ground. */
 const GLOBE_HALF_VIEW = 0.42;
