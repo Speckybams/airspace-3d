@@ -25,6 +25,11 @@ const ESRI_DARK_GRAY =
   "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}";
 const ESRI_WORLD_STREET =
   "https://services.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}";
+const ESRI_WORLD_IMAGERY =
+  "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+const ESRI_IMAGERY_CREDIT = new Credit(
+  "Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+);
 
 function cartoBasemapKey(): string {
   const raw = import.meta.env.VITE_CARTO_BASEMAPS_KEY?.trim() ?? "";
@@ -83,6 +88,14 @@ function createEsriWorldStreetProvider(): UrlTemplateImageryProvider {
   });
 }
 
+function createEsriWorldImageryProvider(): UrlTemplateImageryProvider {
+  return new UrlTemplateImageryProvider({
+    url: ESRI_WORLD_IMAGERY,
+    credit: ESRI_IMAGERY_CREDIT,
+    maximumLevel: 19,
+  });
+}
+
 function createChartStreetLayer(): ImageryLayer {
   if (hasCartoKey()) return new ImageryLayer(createCartoVoyagerProvider());
   if (import.meta.env.DEV) return new ImageryLayer(createOsmProvider());
@@ -134,9 +147,6 @@ export function createOverviewLayer(): ImageryLayer {
   );
 }
 
-const EOX =
-  "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2025_3857/default/g/{z}/{y}/{x}.jpg";
-
 export async function createBasemapLayer(
   id: BasemapId,
   _osKey: string,
@@ -149,17 +159,7 @@ export async function createBasemapLayer(
           layer: new ImageryLayer(provider, { show: true }),
         };
       } catch {
-        const fallback = new UrlTemplateImageryProvider({
-          url: EOX,
-          credit: new Credit(
-            "EOxCloudless (CC BY-NC-SA) — Sentinel-2; not for commercial use",
-          ),
-          maximumLevel: 15,
-        });
-        return {
-          layer: new ImageryLayer(fallback),
-          notice: "Using EOX Sentinel-2 fallback (10 m). Cesium ion imagery unavailable.",
-        };
+        return { layer: new ImageryLayer(createEsriWorldImageryProvider()) };
       }
     }
     case "dark":

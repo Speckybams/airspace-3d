@@ -102,8 +102,11 @@ function DataBody() {
           raster tiles.
         </li>
         <li>
-          <strong>Satellite fallback:</strong> EOX Sentinel-2 where Cesium ion imagery is unavailable (CC
-          BY-NC-SA — non-commercial).
+          <strong>Satellite:</strong> Cesium ion imagery when the ion token is available, otherwise{" "}
+          <a href="https://www.esri.com/en-us/legal/copyright-trademarks" target="_blank" rel="noopener noreferrer">
+            Esri World Imagery
+          </a>
+          .
         </li>
         <li>
           <strong>Places:</strong> GeoNames subset (CC BY).
