@@ -1,3 +1,8 @@
+import {
+  checkFeedbackRateLimit,
+  clientIpFromRequest,
+  recordFeedbackSent,
+} from "../lib/feedbackRateLimit";
 import { sendVoluspaceFeedback } from "../lib/sendVoluspaceFeedback";
 
 interface FeedbackEnv {
@@ -7,6 +12,7 @@ interface FeedbackEnv {
 export async function onRequestPost(context: {
   request: Request;
   env: FeedbackEnv;
+  caches: CacheStorage;
 }): Promise<Response> {
   const key = context.env.RESEND_API_KEY?.trim();
   if (!key) {
@@ -24,6 +30,18 @@ export async function onRequestPost(context: {
     return Response.json({ ok: true });
   }
 
+  const ip = clientIpFromRequest(context.request);
+  const rate = await checkFeedbackRateLimit(ip, context.caches);
+  if (!rate.ok) {
+    return Response.json(
+      { error: "Too many messages. Please wait and try again." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rate.retryAfterSec) },
+      },
+    );
+  }
+
   const result = await sendVoluspaceFeedback(key, {
     message: typeof body.message === "string" ? body.message : "",
     replyEmail: typeof body.replyEmail === "string" ? body.replyEmail : "",
@@ -31,5 +49,6 @@ export async function onRequestPost(context: {
   });
 
   if (!result.ok) return Response.json({ error: result.error }, { status: result.status });
+  await recordFeedbackSent(ip, context.caches);
   return Response.json({ ok: true });
 }

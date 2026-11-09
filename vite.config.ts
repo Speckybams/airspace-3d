@@ -1,6 +1,7 @@
 import path from "node:path";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { checkFeedbackRateLimit, recordFeedbackSent } from "./functions/lib/feedbackRateLimit";
 import { sendVoluspaceFeedback } from "./functions/lib/sendVoluspaceFeedback";
 
 function voluspaceFeedbackDev(apiKey: string | undefined): Plugin {
@@ -36,11 +37,25 @@ function voluspaceFeedbackDev(apiKey: string | undefined): Plugin {
           res.end(JSON.stringify({ error: "Feedback email is not configured." }));
           return;
         }
+        const forwarded = req.headers["x-forwarded-for"];
+        const ip =
+          (typeof forwarded === "string" ? forwarded.split(",")[0] : undefined)?.trim() ||
+          (req.socket?.remoteAddress as string | undefined)?.trim() ||
+          "local-dev";
+        const rate = await checkFeedbackRateLimit(ip);
+        if (!rate.ok) {
+          res.statusCode = 429;
+          res.setHeader("Content-Type", "application/json");
+          res.setHeader("Retry-After", String(rate.retryAfterSec));
+          res.end(JSON.stringify({ error: "Too many messages. Please wait and try again." }));
+          return;
+        }
         const result = await sendVoluspaceFeedback(key, {
           message: typeof body.message === "string" ? body.message : "",
           replyEmail: typeof body.replyEmail === "string" ? body.replyEmail : "",
           page: typeof body.page === "string" ? body.page : "",
         });
+        if (result.ok) await recordFeedbackSent(ip);
         res.statusCode = result.ok ? 200 : result.status;
         res.setHeader("Content-Type", "application/json");
         res.end(JSON.stringify(result.ok ? { ok: true } : { error: result.error }));

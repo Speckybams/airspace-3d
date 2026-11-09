@@ -7,7 +7,7 @@ export function RailFeedback() {
   const [message, setMessage] = useState("");
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error" | "rate">("idle");
 
   const send = async () => {
     const text = message.trim();
@@ -24,6 +24,10 @@ export function RailFeedback() {
           company,
         }),
       });
+      if (res.status === 429) {
+        setStatus("rate");
+        return;
+      }
       if (!res.ok) throw new Error("send failed");
       setMessage("");
       setEmail("");
@@ -41,7 +45,7 @@ export function RailFeedback() {
         aria-expanded={open}
         onClick={() => {
           setOpen((value) => !value);
-          if (status === "sent" || status === "error") setStatus("idle");
+          if (status === "sent" || status === "error" || status === "rate") setStatus("idle");
         }}
       >
         Feedback
@@ -90,6 +94,11 @@ export function RailFeedback() {
             {status === "sending" ? "Sending…" : "Send"}
           </button>
           {status === "sent" ? <p className="rail-feedback-note">Sent to Volugraph support. Thank you.</p> : null}
+          {status === "rate" ? (
+            <p className="rail-feedback-note">
+              Please wait a minute before sending again (up to a few messages per hour).
+            </p>
+          ) : null}
           {status === "error" ? (
             <p className="rail-feedback-note">
               Could not send. Email{" "}
