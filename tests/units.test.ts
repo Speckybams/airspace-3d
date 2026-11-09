@@ -204,6 +204,11 @@ describe("filterRegion", () => {
     expect(airspaceListed("na", airway.category, airway.icaoClass, { airway: false }, on)).toBe(false);
     expect(airspaceListed("icao", "cta", "E", { cta: false }, on)).toBe(false);
     expect(airspaceListed("uk", "ctr", "D", { ctr: true }, { ...on, D: false })).toBe(true);
+    expect(airspaceListed("uk", "cta", "D", { tma: true }, on)).toBe(false);
+    expect(airspaceListed("uk", "tma", "A", { tma: true, ctr: true }, on)).toBe(true);
+    expect(airspaceListed("icao", "danger", "G", { tma: true, danger: true }, on)).toBe(true);
+    expect(airspaceListed("icao", "restricted", "G", { tma: true, danger: true }, on)).toBe(false);
+    expect(airspaceListed("na", "moa", "G", { moa: true }, { ...on, B: false, C: false, D: false, E: false, F: false })).toBe(true);
   });
 
   it("keeps the lowest shelf solid and drops a twin restricted copy", () => {

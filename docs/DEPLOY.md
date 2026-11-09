@@ -33,6 +33,7 @@ If the domain is registered **with Cloudflare**, skip nameserver changes.
 | `VITE_CESIUM_ION_ACCESS_TOKEN` | From [Cesium ion](https://ion.cesium.com/tokens) |
 | `VITE_OS_API_KEY` | Optional — OS Data Hub key for a future OS raster layer; **CHART/DARK use CARTO** (OSM-derived; see [`basemaps.ts`](../src/cesium/basemaps.ts)) |
 | `VITE_CARTO_BASEMAPS_KEY` | Optional but recommended on production — [CARTO basemap API key](https://carto.com/basemaps/apikey/) |
+| `RESEND_API_KEY` | Server only (not `VITE_`). Sends the left-panel feedback form to support@volugraph.com |
 | `NODE_VERSION` | `22` |
 
 5. **Save and Deploy**. Open the `*.pages.dev` URL.

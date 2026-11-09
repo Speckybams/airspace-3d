@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { CATEGORY_HINTS, CATEGORY_STYLES, NA_CLASS_HINTS, NA_CLASS_STYLES } from "@/lib/colors";
 import { NA_CLASS_LETTERS, type FilterRegion } from "@/lib/filterRegion";
 import type { AirspaceCategory, BasemapId } from "@/lib/types";
+import { RailFeedback } from "@/components/RailFeedback";
 import { ToolsMenu } from "@/components/TopBar";
 import { useAppStore } from "@/store/appStore";
 
@@ -35,7 +36,7 @@ function filterGroups(
     label: id.toUpperCase(),
     hint: CATEGORY_HINTS[id],
     swatch: CATEGORY_STYLES[id].outline,
-    checked: categoryVisible[id] !== false,
+    checked: categoryVisible[id] === true,
     toggle: () => toggleCategory(id),
   });
   const klass = (letter: string): FilterRow => ({
@@ -43,7 +44,7 @@ function filterGroups(
     label: `CLASS ${letter}`,
     hint: NA_CLASS_HINTS[letter],
     swatch: NA_CLASS_STYLES[letter].outline,
-    checked: classVisible[letter] !== false,
+    checked: classVisible[letter] === true,
     toggle: () => toggleClass(letter),
   });
 
@@ -277,6 +278,7 @@ export function LeftRail() {
           View chart top-down
         </label>
       </section>
+      <RailFeedback />
       {hintPopover}
     </aside>
   );

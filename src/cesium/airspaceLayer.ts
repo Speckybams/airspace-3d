@@ -305,8 +305,8 @@ export class AirspaceLayer {
       edgeEnds,
       edgeIds,
       plateEdgeIds,
-      shown: true,
-      showPending: false,
+      shown: false,
+      showPending: true,
       fillPrimitive: null,
       edgePrimitive: null,
       platePrimitive: null,
@@ -573,7 +573,7 @@ export class AirspaceLayer {
         appearance: this.fillAppearance,
         asynchronous: true,
         cull: true,
-        show: !this.overview,
+        show: false,
       }),
     );
     const edges =
@@ -586,7 +586,7 @@ export class AirspaceLayer {
         asynchronous: true,
         cull: true,
         allowPicking: false,
-        show: !this.overview,
+        show: false,
       }),
     );
     const plate =
@@ -598,7 +598,7 @@ export class AirspaceLayer {
               appearance: this.plateAppearance,
               asynchronous: false,
               cull: true,
-              show: this.overview,
+              show: false,
             }),
           );
     const plateEdges =
@@ -611,7 +611,7 @@ export class AirspaceLayer {
               asynchronous: false,
               cull: true,
               allowPicking: false,
-              show: this.overview,
+              show: false,
             }),
           );
     for (const rec of queue.records) {
@@ -637,6 +637,9 @@ export class AirspaceLayer {
       plateEdges: [],
       records: [],
     });
+    // New cells must not reuse the last visibility pass or they draw every category.
+    this.visKey = "";
+    this.hasPendingShows = true;
   }
 
   private writeShow(rec: VolumeRecord, show: boolean): boolean {
@@ -696,8 +699,9 @@ export class AirspaceLayer {
       for (const rec of batch.records) {
         const terrain = this.terrainHeights.get(rec.feature.id) ?? 0;
         const inBand = altitudeBandActive(rec.feature, bandLow, bandHigh, terrain);
+        const [lon, lat] = rec.feature.ring[0] ?? [0, 0];
         const listed = airspaceListed(
-          viewRegion,
+          filterRegionFor(lat, lon),
           rec.feature.category,
           rec.feature.icaoClass,
           categoryVisible,

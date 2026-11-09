@@ -432,6 +432,8 @@
 }
 
 .left-rail {
+  display: flex;
+  flex-direction: column;
   border-right: 1px solid var(--border);
   background: var(--panel);
   padding: 8px 10px 10px;
@@ -460,6 +462,59 @@
 
 .left-rail .check {
   margin: 8px 0 2px;
+}
+
+.rail-feedback {
+  margin-top: auto;
+  padding-top: 12px;
+}
+
+.rail-feedback-toggle {
+  width: 100%;
+}
+
+.rail-feedback-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rail-feedback-form textarea,
+.rail-feedback-form input[type="email"] {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: var(--radius);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.rail-feedback-form textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+.rail-feedback-honey {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.rail-feedback-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.rail-feedback-note a {
+  color: var(--accent);
 }
 
 .filter-groups {

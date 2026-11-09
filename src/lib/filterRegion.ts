@@ -32,9 +32,9 @@ export function classFilterApplies(region: FilterRegion, category: AirspaceCateg
 }
 
 /**
- * True when this volume belongs to a checkbox the viewer can see.
- * In North America, class B–F volumes follow the class row even if the
- * underlying CTA/CTR category flag is off.
+ * True only when this volume's own region has its matching checkbox explicitly on.
+ * A missing flag stays hidden. In North America, class B–F volumes follow the class
+ * row even if the underlying CTA/CTR category flag is off.
  */
 export function airspaceListed(
   region: FilterRegion,
@@ -43,9 +43,9 @@ export function airspaceListed(
   categoryVisible: Record<string, boolean>,
   classVisible: Record<string, boolean>,
 ): boolean {
-  if (classFilterApplies(region, category, icaoClass)) return classVisible[icaoClass] !== false;
+  if (classFilterApplies(region, category, icaoClass)) return classVisible[icaoClass] === true;
   if (region === "na" && !NA_CATEGORY_ROWS.has(category)) return false;
-  return categoryVisible[category] !== false;
+  return categoryVisible[category] === true;
 }
 
 export function airspaceTypeLabel(feature: AirspaceFeature): string {
