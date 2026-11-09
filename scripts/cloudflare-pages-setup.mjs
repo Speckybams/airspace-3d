@@ -68,11 +68,16 @@ if (!cesium || !osKey) {
   throw new Error("Missing VITE_CESIUM_ION_ACCESS_TOKEN or VITE_OS_API_KEY in .env");
 }
 
+const carto = env.VITE_CARTO_BASEMAPS_KEY?.trim();
+const resend = env.RESEND_API_KEY?.trim();
+
 const envBlock = {
   VITE_CESIUM_ION_ACCESS_TOKEN: secretVar(cesium),
   VITE_OS_API_KEY: secretVar(osKey),
   NODE_VERSION: plainVar("22"),
 };
+if (carto) envBlock.VITE_CARTO_BASEMAPS_KEY = secretVar(carto);
+if (resend) envBlock.RESEND_API_KEY = secretVar(resend);
 
 const deployConfig = {
   build_command: "npm run build",
